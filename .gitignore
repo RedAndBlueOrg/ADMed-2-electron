@@ -1,0 +1,29 @@
+# Node / package managers
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# Builds / artifacts
+dist/
+out/
+release/
+*.zip
+*.exe
+*.blockmap
+
+# Env / config
+.env
+.env.local
+
+# Electron cache/data
+*.pid
+*.pid.lock
+*.log
+*.tgz
+*.tmp
+
+# OS
+.DS_Store
+Thumbs.db

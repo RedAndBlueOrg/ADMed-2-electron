@@ -1,0 +1,60 @@
+{
+  "name": "admed",
+  "version": "2.0.0",
+  "description": "ADMed for Windows",
+  "main": "main.js",
+  "type": "commonjs",
+  "author": "",
+  "license": "ISC",
+  "keywords": [],
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "rebuild": "electron-rebuild -f -w keytar",
+    "dist": "electron-builder --win nsis",
+    "pack:dir": "electron-builder --dir",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "auto-launch": "^5.0.6",
+    "ini": "^5.0.0",
+    "keytar": "^7.9.0",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "dotenv": "^16.4.5",
+    "electron": "^39.2.7",
+    "electron-builder": "^24.13.3",
+    "electron-rebuild": "^3.2.9"
+  },
+  "build": {
+    "appId": "kr.fine.admed.pc",
+    "productName": "ADMed",
+    "asar": true,
+    "files": [
+      "**/*",
+      "!dist/**",
+      "!release/**",
+      "!node_modules/.cache/**"
+    ],
+    "extraResources": [
+      { "from": ".env", "to": "." },
+      { "from": "images/icon.ico", "to": "." }
+    ],
+    "win": {
+      "target": ["nsis"],
+      "icon": "images/icon.ico",
+      "artifactName": "${productName}-${version}-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ADMed",
+      "runAfterFinish": true
+    }
+  }
+}
