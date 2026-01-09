@@ -10,6 +10,7 @@ const { pathToFileURL } = require('url');
 const AdmZip = require('adm-zip');
 const AutoLaunch = require('auto-launch');
 const ini = require('ini');
+const { autoUpdater } = require('electron-updater');
 
 const CACHE_ROOT_NAME = 'admed-cache';
 const USER_DATA_PATH = app.getPath('userData');
@@ -1269,6 +1270,28 @@ function attachContextMenu(win) {
   });
 }
 
+function initAutoUpdater() {
+  if (!app.isPackaged) return;
+  try {
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.on('error', (err) => {
+      console.warn('[update] error:', err?.message || err);
+    });
+    autoUpdater.on('update-available', (info) => {
+      console.log('[update] available:', info?.version || 'unknown');
+    });
+    autoUpdater.on('update-downloaded', (info) => {
+      console.log('[update] downloaded:', info?.version || 'unknown', '- will install on quit');
+    });
+    autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+      console.warn('[update] check failed:', err?.message || err);
+    });
+  } catch (err) {
+    console.warn('[update] init failed:', err?.message || err);
+  }
+}
+
 app.whenReady().then(() => {
   windowState = loadWindowState();
   const win = createWindow();
@@ -1276,6 +1299,7 @@ app.whenReady().then(() => {
   setupAutoLaunch();
   setupGeolocationPermission();
   attachContextMenu(win);
+  initAutoUpdater();
 
   ipcMain.handle('playlist:prepare', async () => {
     return await preparePlaylist();

@@ -45,6 +45,13 @@ npm start   # Electron 실행
 - 시나리오 템플릿이 캐시에 없어 새로 받아야 할 때 전체 화면 팝업으로 진행률(완료/총 다운로드 건수)을 안내합니다.
 - 캐시에 이미 있으면 팝업이 뜨지 않고, 관리자가 영상을 교체한 뒤 다음 사이클에서 필요한 파일만 한 번 다운로드하면 자동으로 닫힙니다.
 
+자동 업데이트
+-----------
+- GitHub Releases를 배포 서버로 사용하며, `electron-updater`가 실행 시 업데이트를 확인합니다(배포 설정은 `build.publish`에 `github` 지정).
+- 빌드/배포 시 `GH_TOKEN`(GitHub Personal Access Token, Contents RW, Metadata R)을 환경 변수로 설정해야 릴리스 업로드가 가능합니다.
+- 앱은 패키징된(production) 상태에서만 업데이트 체크를 수행하며, 다운로드 후 재시작 시 새 버전이 적용됩니다.
+- GitHub Actions 워크플로(`.github/workflows/release.yml`)는 태그 `v*` 푸시 시 `npm run dist -- --publish always`로 빌드/릴리스를 올립니다. 워크플로 시크릿에 `GH_TOKEN`을 등록해야 합니다.
+
 로컬 설정/저장 위치
 ------------------
 - `%APPDATA%/ADMed/device_config.ini`: 기기 시리얼 저장(`ADMed.device_serial`). 컨텍스트 메뉴 → “관리자 설정”에서 수정, 기본 비밀번호 `rnb61196119`.
