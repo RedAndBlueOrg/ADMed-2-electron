@@ -12,6 +12,10 @@ contextBridge.exposeInMainWorld('mediaAPI', {
   },
 });
 
+contextBridge.exposeInMainWorld('appInfo', {
+  getVersion: () => ipcRenderer.invoke('app:version'),
+});
+
 contextBridge.exposeInMainWorld('clinicWS', {
   start: (config) => ipcRenderer.invoke('clinic:ws:start', config),
   stop: () => ipcRenderer.invoke('clinic:ws:stop'),

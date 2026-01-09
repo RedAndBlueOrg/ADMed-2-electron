@@ -22,6 +22,7 @@ const downloadOverlay = document.getElementById('download-overlay');
 const downloadProgressFill = document.getElementById('download-progress-fill');
 const downloadProgressText = document.getElementById('download-progress-text');
 const downloadProgressBar = document.getElementById('download-progress-bar');
+const versionToast = document.getElementById('version-toast');
 
 let playlist = [];
 let currentIndex = 0;
@@ -74,6 +75,7 @@ let landingLoaded = false;
 let scaleTimer = null;
 let downloadHideTimer = null;
 let downloadProgressUnsub = null;
+let versionToastTimer = null;
 
 function applyLayout(nextWaitingInfo) {
   const mode = (nextWaitingInfo || '').toString().toUpperCase();
@@ -157,6 +159,30 @@ function log(message) {
   console.log(message);
   if (!overlayLocked && statusOverlay) {
     statusOverlay.style.display = 'none';
+  }
+}
+
+function showVersionToast(message) {
+  if (!versionToast) return;
+  if (versionToastTimer) {
+    clearTimeout(versionToastTimer);
+    versionToastTimer = null;
+  }
+  versionToast.textContent = message;
+  versionToast.style.display = 'block';
+  versionToastTimer = setTimeout(() => {
+    if (versionToast) versionToast.style.display = 'none';
+  }, 5000);
+}
+
+async function renderVersionToast() {
+  if (!window.appInfo?.getVersion || !versionToast) return;
+  try {
+    const version = await window.appInfo.getVersion();
+    const text = version ? `ADMed v${version} 업데이트 적용됨` : 'ADMed 버전 확인';
+    showVersionToast(text);
+  } catch (err) {
+    console.warn('version toast failed:', err?.message || err);
   }
 }
 
@@ -1117,6 +1143,7 @@ document.addEventListener('contextmenu', (e) => {
 
 window.addEventListener('DOMContentLoaded', () => {
   setupDownloadProgressListener();
+  renderVersionToast();
   loadNotices().catch((err) => {
     log(`Notice load error: ${err.message}`);
   });

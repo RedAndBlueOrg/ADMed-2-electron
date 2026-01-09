@@ -1,6 +1,6 @@
 {
   "name": "admed",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "ADMed for Windows",
   "main": "main.js",
   "type": "commonjs",
@@ -40,11 +40,19 @@
       "!node_modules/.cache/**"
     ],
     "extraResources": [
-      { "from": ".env", "to": "." },
-      { "from": "images/icon.ico", "to": "." }
+      {
+        "from": ".env",
+        "to": "."
+      },
+      {
+        "from": "images/icon.ico",
+        "to": "."
+      }
     ],
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "icon": "images/icon.ico",
       "artifactName": "${productName}-${version}-Setup.${ext}"
     },
@@ -66,5 +74,3 @@
     ]
   }
 }
-
-

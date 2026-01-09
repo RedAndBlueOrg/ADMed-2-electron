@@ -1324,6 +1324,7 @@ app.whenReady().then(() => {
     const menu = buildContextMenu();
     menu.popup({ window: win });
   });
+  ipcMain.handle('app:version', async () => app.getVersion());
   ipcMain.handle('weather:config', async () => {
     return {
       lat: process.env.WEATHER_LAT ? Number(process.env.WEATHER_LAT) : null,
