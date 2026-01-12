@@ -179,7 +179,7 @@ async function renderVersionToast() {
   if (!window.appInfo?.getVersion || !versionToast) return;
   try {
     const version = await window.appInfo.getVersion();
-    const text = version ? `ADMed v${version} 업데이트 적용됨` : 'ADMed 버전 확인';
+    const text = version ? `ADMed v${version}` : 'ADMed 버전 확인';
     showVersionToast(text);
   } catch (err) {
     console.warn('version toast failed:', err?.message || err);
