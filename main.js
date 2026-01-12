@@ -32,6 +32,7 @@ let cacheServerBase = null;
 let cacheServerReady = null;
 let tray = null;
 let autoLauncher = null;
+let pendingUpdateInstall = false;
 let windowState = null;
 let saveStateTimer = null;
 let mainWindow = null;
@@ -1273,19 +1274,49 @@ function attachContextMenu(win) {
 function initAutoUpdater() {
   if (!app.isPackaged) return;
   try {
+    const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+    if (token) {
+      // Allow private GitHub releases when a token is provided at runtime
+      autoUpdater.requestHeaders = { Authorization: `token ${token}` };
+    }
+    const broadcastUpdateEvent = (channel, payload) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) win.webContents.send(channel, payload);
+      }
+    };
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
     autoUpdater.on('error', (err) => {
       console.warn('[update] error:', err?.message || err);
+      broadcastUpdateEvent('update:error', err?.message || String(err));
     });
     autoUpdater.on('update-available', (info) => {
       console.log('[update] available:', info?.version || 'unknown');
+      broadcastUpdateEvent('update:available', info);
     });
     autoUpdater.on('update-downloaded', (info) => {
       console.log('[update] downloaded:', info?.version || 'unknown', '- will install on quit');
+      broadcastUpdateEvent('update:ready', info);
+      if (!pendingUpdateInstall) {
+        pendingUpdateInstall = true;
+        setTimeout(() => {
+          try {
+            // silent install + relaunch
+            autoUpdater.quitAndInstall(false, true);
+          } catch (installErr) {
+            pendingUpdateInstall = false;
+            console.warn('[update] quitAndInstall failed:', installErr?.message || installErr);
+            broadcastUpdateEvent('update:error', installErr?.message || String(installErr));
+          }
+        }, 1000);
+      }
+    });
+    autoUpdater.on('download-progress', (progress) => {
+      broadcastUpdateEvent('update:progress', progress);
     });
     autoUpdater.checkForUpdatesAndNotify().catch((err) => {
       console.warn('[update] check failed:', err?.message || err);
+      broadcastUpdateEvent('update:error', err?.message || String(err));
     });
   } catch (err) {
     console.warn('[update] init failed:', err?.message || err);

@@ -1,6 +1,6 @@
 {
   "name": "admed",
-  "version": "2.0.4",
+  "version": "2.0.8",
   "description": "ADMed for Windows",
   "main": "main.js",
   "type": "commonjs",
@@ -58,7 +58,7 @@
     },
     "nsis": {
       "oneClick": false,
-      "perMachine": true,
+      "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
