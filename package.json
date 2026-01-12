@@ -57,13 +57,13 @@
       "artifactName": "${productName}-${version}-Setup.${ext}"
     },
     "nsis": {
-      "oneClick": false,
+      "oneClick": true,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "ADMed",
-      "runAfterFinish": true
+      "runAfterFinish": true,
+      "allowElevation": true
     },
     "publish": [
       {
