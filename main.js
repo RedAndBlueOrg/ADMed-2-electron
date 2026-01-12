@@ -12,6 +12,8 @@ const AutoLaunch = require('auto-launch');
 const ini = require('ini');
 const { autoUpdater } = require('electron-updater');
 
+loadEnvFiles();
+
 const CACHE_ROOT_NAME = 'admed-cache';
 const USER_DATA_PATH = app.getPath('userData');
 const WINDOW_STATE_PATH = path.join(USER_DATA_PATH, 'window-state.ini');
@@ -20,7 +22,7 @@ const TRAY_ICON_CANDIDATES = [
   path.join(__dirname, 'images', 'icon.ico'),
   path.join(process.resourcesPath || __dirname, 'images', 'icon.ico'),
 ];
-const ADMIN_PASSWORD = 'rnb61196119';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 
 app.commandLine.appendSwitch('ignore-certificate-errors');
 // Enable WinRT geolocation (avoids Google API key requirement on Windows)
@@ -1360,6 +1362,10 @@ app.whenReady().then(() => {
     return {
       lat: process.env.WEATHER_LAT ? Number(process.env.WEATHER_LAT) : null,
       lon: process.env.WEATHER_LON ? Number(process.env.WEATHER_LON) : null,
+      weatherServiceUrl:
+        process.env.WEATHER_SERVICE_URL ||
+        'https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst',
+      weatherServiceKey: process.env.WEATHER_SERVICE_KEY || '',
     };
   });
 

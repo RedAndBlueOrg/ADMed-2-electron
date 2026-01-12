@@ -1,4 +1,4 @@
-const videoEl = document.getElementById('video');
+﻿const videoEl = document.getElementById('video');
 const imageEl = document.getElementById('image');
 const listEl = document.getElementById('playlist');
 const noticeBar = document.getElementById('notice-bar');
@@ -40,6 +40,23 @@ let apiError = false;
 let weatherReady = false;
 let weatherTimer = null;
 let cachedWeatherConfig = null;
+
+function seedWeatherConfigFromPreload() {
+  try {
+    if (window.weatherConfig && typeof window.weatherConfig.get === 'function') {
+      const cfg = window.weatherConfig.get();
+      cachedWeatherConfig = {
+        lat: cfg?.lat || null,
+        lon: cfg?.lon || null,
+        url: cfg?.weatherServiceUrl || null,
+        key: cfg?.weatherServiceKey || null,
+      };
+    }
+  } catch (err) {
+    console.warn('[weather] preload config seed failed:', err.message);
+  }
+}
+seedWeatherConfigFromPreload();
 let overlayLocked = true; // 오버레이 사라짐 제어
 let retryTimer = null;
 let onlineCheckTimer = null;
@@ -1002,6 +1019,7 @@ async function loadPlaylist({ fromCycle = false, fromRecovery = false } = {}) {
           ? response.waitingInfo
           : waitingInfo;
       waitingInfo = nextWaitingInfo;
+      
       noticeList = response.noticeList || [];
       noticeIndex = 0;
     }
@@ -1391,9 +1409,16 @@ function startWeatherClock() {
 
 function fetchWeather(lat, lon) {
   if (!lat || !lon) return;
-  const url = 'https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst';
-  const serviceKey = 'F%2FDjBcEeX6B09LKxUiggUcj%2Bf5lh0UrK3%2BcnLVy04p7YzVif6OYu7nAKv4M5KTbn%2BttZ6a0XfLRWAuONt4hlfQ%3D%3D';
-
+  const url =
+    (cachedWeatherConfig && cachedWeatherConfig.url) ||
+    'https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst';
+  const serviceKey = cachedWeatherConfig && cachedWeatherConfig.key;
+  if (!serviceKey) {
+    console.warn('[weather] WEATHER_SERVICE_KEY is missing');
+    if (weatherContent) weatherContent.textContent = '날씨 정보를 불러올 수 없습니다.';
+    return;
+  }
+  const encodedServiceKey = serviceKey.includes('%') ? serviceKey : encodeURIComponent(serviceKey);
   const { nx, ny } = mapToGrid(lat, lon);
   const now = new Date();
   const month = `${now.getMonth() + 1}`.padStart(2, '0');
@@ -1471,7 +1496,12 @@ function useConfigWeather(fallbackMsg) {
   window.mediaAPI
     .getWeatherConfig()
     .then((cfg) => {
-      cachedWeatherConfig = cfg;
+      cachedWeatherConfig = {
+        lat: (cfg?.lat || null),
+        lon: (cfg?.lon || null),
+        url: (cfg?.weatherServiceUrl || null),
+        key: (cfg?.weatherServiceKey || null),
+      };
       if (cfg?.lat && cfg?.lon) {
         fetchWeather(cfg.lat, cfg.lon);
       } else if (weatherContent) {
@@ -1568,3 +1598,4 @@ function renderWeather(info) {
   }
   lastWeatherInfo = info;
 }
+
