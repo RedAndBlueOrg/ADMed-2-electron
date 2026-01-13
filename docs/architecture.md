@@ -1,44 +1,39 @@
-아키텍처 개요
-=============
+아키텍처 개요 (v2.0.1)
+=====================
 
-구성 요소
+컴포넌트
 --------
 - **Main(Process)**  
-  - `.env`/`device_config.ini`/`window-state.ini` 로드, 자동 실행 설정, 트레이 및 컨텍스트 메뉴 관리.  
-  - 시나리오/공지/클리닉 API 호출, 템플릿 URL 생성, ZIP(HLS) 다운로드·압축 해제.  
-  - 캐시 디렉터리(`%TEMP%/admed-cache`)를 관리하고 내장 HTTP 서버로 파일/HLS 세그먼트 서빙.  
-  - IPC 핸들러를 통해 렌더러에 플레이리스트/공지/클리닉/날씨 설정 전달.
+  - `.env`/`device_config.ini`/`window-state.ini`를 로드해 런타임 설정을 준비합니다.  
+  - 시나리오 API(`SCENARIO_API_URL?id=<device_serial>`) 호출 → 템플릿 URL 생성(`TEMPLATE_BASE_URL`).  
+  - 자산 캐시(`%TEMP%/admed-cache`) 관리, HLS ZIP 다운로드·압축 해제 후 로컬 HTTP 서버로 제공.  
+  - IPC 핸들러 제공: 재생 목록 준비, 공지 조회, 날씨/클리닉 설정 전달, 컨텍스트 메뉴 호출.  
+  - 자동 실행(`auto-launch`), 트레이 아이콘, 창 상태 저장/복원, 자동 업데이트(`electron-updater`).  
+  - 관리자 설정(비밀번호 검증 후 `device_serial` 변경) UI를 모달로 렌더링.
 
 - **Renderer(Process)**  
-  - 비디오/이미지/HLS 플레이어, 공지 롤링, 대기열·날씨 패널 렌더링.  
-  - 네트워크 오류 시 재시도 및 온라인 이벤트 기반 복구.  
-  - 클리닉 REST+WS 데이터를 UI에 반영하고 실시간 알림/효과음/음성 안내 처리.
+  - 재생 목록을 받아 이미지(지정 시간), 동영상, HLS 스트림을 플레이어로 표시합니다.  
+  - 공지 배너 스크롤, `waitingInfo` 모드에 따른 레이아웃(공지/날씨/대기 현황) 적용.  
+  - 날씨 패널: Geolocation/IP 또는 설정 좌표로 기상청 초단기예보 호출 → 시계/아이콘 렌더링.  
+  - 대기 현황: REST로 초기 대기열, WebSocket으로 실시간 이벤트 수신 → 카드/스크롤/호출 팝업(TTS 오디오) 반영.  
+  - 랜딩 프레임: 재생 목록이 없거나 오류 시 `LANDING_URL`을 iframe으로 노출.  
+  - 다운로드/업데이트 진행 상황, 버전 토스트 등을 오버레이로 표시.
 
 - **Preload**  
-  - `mediaAPI`(playlist 준비, 공지 조회, 컨텍스트 메뉴, 날씨 설정), `clinicWS`(WS start/stop, onMessage) 브릿지 제공.
+  - `mediaAPI`(재생 목록 준비, 공지 조회, 날씨 설정, 다운로드 이벤트), `clinicWS`(WS start/stop/listen), `appInfo`(버전) 브리지 노출.  
+  - 렌더러가 직접 환경 변수에 접근하지 않아도 필요한 최소 설정을 전달합니다.
 
 데이터 흐름
----------
-1. 메인 프로세스가 환경 설정(.env, ini)과 창 상태를 로드한 뒤 렌더러를 기동.  
-2. 렌더러가 `mediaAPI.preparePlaylist()` 요청 → 메인은 시나리오 API(`SCENARIO_API_URL?id=<device_serial>`) 호출.  
-3. 응답 `templates[]`를 타입별로 매핑하고, `TEMPLATE_BASE_URL?img=<name>&type=<ext>` 형태로 다운로드 URL 생성.  
-4. 로컬 캐시에 존재하는 파일은 즉시 사용, 없으면 백그라운드로 다운로드하고 현재는 스트림 URL로 재생.  
-5. `type: m3u8` ZIP 패키지는 내려받아 압축 해제 후 `.m3u8`을 찾아 내장 서버(`http://127.0.0.1:<port>/cache/...`)로 서빙.  
-6. 렌더러는 전달받은 목록을 순회 재생(이미지는 durationSeconds, 영상은 ended 이벤트 기준). HLS는 `hls.js`가 가능하면 사용, 지원 안 되면 비디오 태그 네이티브 재생 시도.  
-7. 공지·대기열·날씨 정보는 추가 IPC 호출(공지: `notice:fetch`, 날씨: `weather:config`) 및 REST/WS(클리닉)로 주기 갱신.  
-8. 메인은 사용하지 않는 캐시 파일을 15분 단위로 정리하여 디스크 사용량을 제한.
+-----------
+1. **초기화**: Main이 환경 변수/INI를 읽어 창 상태와 디바이스 시리얼을 복원, 자동 실행·트레이·업데이트를 설정합니다.  
+2. **재생 목록 준비**: 렌더러가 `playlist:prepare` IPC를 호출 → Main이 시나리오 API/공지 API를 호출하고 자산을 캐시한 뒤 URL/로컬 경로/대기정보/멤버 seq 등을 반환합니다.  
+3. **플레이어 렌더링**: 렌더러는 반환된 재생 목록을 순회하며 이미지 타이머·동영상 loop·HLS(`hls.js`)를 처리하고, 공지/레이아웃/랜딩 화면을 동적으로 토글합니다.  
+4. **대기/클리닉 연동**: `waitingInfo === 'Y'` 또는 API 제공 시 REST로 초기 대기열을 받아 카드 렌더링 → WebSocket으로 수신한 이벤트를 큐에 반영하고 호출 팝업/음성을 실행합니다.  
+5. **날씨 갱신**: 대기 모드 `B`일 때 좌표를 결정(설정 → Geolocation → IP Fallback)하고 기상청 API를 호출, 시간 정렬된 예보를 선택해 패널에 표시합니다.  
+6. **상태 유지**: 창 이동/크기/전체화면/항상위 상태를 실시간 저장, 컨텍스트 메뉴에서 프리셋/중앙정렬/리로드/자동 실행/관리자 설정을 제공합니다.
 
-파일/저장소 구조
+저장소·네트워크
 ---------------
-- 소스: `main.js`(메인), `renderer.js`(UI), `preload.js`, `index.html`(레이아웃/스타일).  
-- 캐시: `%TEMP%/admed-cache/<asset or package>/` + 내장 HTTP 서버.  
-- 설정: `%APPDATA%/ADMed/device_config.ini`(device_serial), `%APPDATA%/ADMed/window-state.ini`(창 상태), 루트 `.env`(API 베이스).  
-- 자산: `images/icon.ico`, `modalAudio.wav`(알림 음원).
-
-외부 연동
---------
-- 시나리오 API: `SCENARIO_API_URL` (필수) — 템플릿 목록/대기열 모드/멤버 seq 반환.  
-- 템플릿 파일: `TEMPLATE_BASE_URL?img=<name>&type=<ext>` — 영상/이미지/HLS 패키지 다운로드.  
-- 공지 API: 시나리오 호스트 기준 `/dapi/clinic/notice/list?memberId=<mSeq>`.  
-- 클리닉 REST/WS: `CLINIC_API_ORIGIN/dapi/clinic/list`, `CLINIC_WS_ORIGIN/clinic/topic/<memberSeq>/<clinicSeq?>`.  
-- 날씨: 기상청 초단기예보 OpenAPI(필드 T1H/REH/WSD/PTY/SKY 사용), 좌표 미설정 시 위치 권한/IP Fallback.
+- 로컬 저장: `%APPDATA%/ADMed/device_config.ini`, `%APPDATA%/ADMed/window-state.ini`, `%TEMP%/admed-cache/`.  
+- 네트워크: 시나리오 API, 템플릿 파일 CDN, 공지 API, 클리닉 REST/WS, 기상청 초단기예보, IP 위치(`https://ipapi.co/json/`).  
+- 배포/업데이트: GitHub Releases(`RedAndBlueOrg/ADMed-2-electron`)를 기본 소스로 사용하며, 토큰 제공 시 비공개 릴리스도 지원.
