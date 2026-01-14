@@ -111,8 +111,8 @@ function applyLayout(nextWaitingInfo) {
       panelW = 0;
       break;
     case 'B':
-      noticeH = 10;
-      panelW = 10;
+      noticeH = 12;
+      panelW = 12;
       showWeather = true;
       break;
     case 'Y':
@@ -203,7 +203,7 @@ async function renderVersionToast() {
   }
 }
 
-function updateDownloadOverlay({ total = 0, finished = 0, active = false } = {}) {
+function updateDownloadOverlay({ total = 0, finished = 0, active = false, currentTitle = '' } = {}) {
   if (!downloadOverlay) return;
   if (downloadHideTimer) {
     clearTimeout(downloadHideTimer);
@@ -216,8 +216,13 @@ function updateDownloadOverlay({ total = 0, finished = 0, active = false } = {})
   const ratio = totalCount ? Math.min(1, doneCount / totalCount) : 0;
   const percent = Math.round(ratio * 100);
 
+  const rawTitle = (currentTitle || '').trim();
+  const maxLen = 28;
+  const displayTitle =
+    rawTitle && rawTitle.length > maxLen ? `${rawTitle.slice(0, maxLen - 3)}...` : rawTitle || '시나리오 컨텐츠';
+
   if (downloadProgressText) {
-    downloadProgressText.textContent = `시나리오 컨텐츠를 동기화중입니다. (${doneCount}/${totalCount || 0})`;
+    downloadProgressText.textContent = `${displayTitle} (${doneCount}/${totalCount || 0})`;
   }
   if (downloadProgressFill) {
     downloadProgressFill.style.width = `${percent}%`;
@@ -1598,4 +1603,3 @@ function renderWeather(info) {
   }
   lastWeatherInfo = info;
 }
-

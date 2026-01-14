@@ -658,7 +658,7 @@ async function promptInput({ title, label, placeholder = '', value = '', passwor
   return new Promise((resolve) => {
     const promptWin = new BrowserWindow({
       width: 460,
-      height: 215,
+      height: 220,
       resizable: false,
       minimizable: false,
       maximizable: false,
@@ -723,7 +723,7 @@ async function promptAdminSettings({ currentSerial = '' } = {}) {
   return new Promise((resolve) => {
     const promptWin = new BrowserWindow({
       width: 460,
-      height: 225,
+      height: 230,
       resizable: false,
       minimizable: false,
       maximizable: false,
@@ -1064,13 +1064,17 @@ async function preparePlaylist() {
   let memberSeq = null;
   let downloadTotal = 0;
   let downloadFinished = 0;
+  let currentDownloadTitle = '';
 
-  const notifyDownload = () => {
+  const getItemDisplayName = (item) => item?.title || item?.id || item?.url || '';
+
+  const notifyDownload = (overrides = {}) => {
     const active = downloadTotal > 0 && downloadFinished < downloadTotal;
     sendDownloadProgress({
       total: downloadTotal,
       finished: Math.min(downloadFinished, downloadTotal),
       active,
+      currentTitle: overrides.currentTitle ?? currentDownloadTitle ?? '',
     });
   };
 
@@ -1134,19 +1138,20 @@ async function preparePlaylist() {
       const destDir = path.join(cacheRoot, safeBase);
       ensureDir(destDir);
       const zipPath = path.join(cacheRoot, `${safeBase}.zip`);
+      currentDownloadTitle = getItemDisplayName(item);
 
       if (!fs.existsSync(zipPath) || !findFirstManifest(destDir)) {
         downloadTotal += 1;
-        notifyDownload();
+        notifyDownload({ currentTitle: currentDownloadTitle });
         try {
           const dl = await downloadFileWithHeaders(item.url, zipPath);
           extractZip(zipPath, destDir);
           downloadFinished += 1;
-          notifyDownload();
+          notifyDownload({ currentTitle: currentDownloadTitle });
         } catch (err) {
           console.error(`download failed for package ${item.url}`, err);
           downloadFinished += 1;
-          notifyDownload();
+          notifyDownload({ currentTitle: currentDownloadTitle });
           prepared.push({ ...item, type: 'hls', streamUrl: item.url, error: err.message });
           continue;
         }
@@ -1192,18 +1197,20 @@ async function preparePlaylist() {
       streamUrl: item.url,
     });
 
+    const downloadTitle = getItemDisplayName(item);
+    currentDownloadTitle = downloadTitle;
     downloadTotal += 1;
-    notifyDownload();
+    notifyDownload({ currentTitle: downloadTitle });
 
     const dl = downloadFile(item.url, destPath)
       .then(() => {
         downloadFinished += 1;
-        notifyDownload();
+        notifyDownload({ currentTitle: downloadTitle });
       })
       .catch((err) => {
         console.error(`download failed (bg) for ${item.url}`, err);
         downloadFinished += 1;
-        notifyDownload();
+        notifyDownload({ currentTitle: downloadTitle });
       });
 
     backgroundDownloads.push(dl);
