@@ -3,6 +3,7 @@
 const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, dialog, session, screen, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { execFile } = require('child_process');
 const { pipeline } = require('stream/promises');
 const http = require('http');
 const https = require('https');
@@ -60,6 +61,15 @@ function buildStartupShortcutOptions() {
     options.iconIndex = 0;
   }
   return options;
+}
+
+function cleanupLegacyRunEntry() {
+  // Remove legacy auto-launch Run entry to avoid duplicate startup items.
+  const regPath = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
+  const valueName = app.getName();
+  execFile('reg', ['delete', regPath, '/v', valueName, '/f'], { windowsHide: true }, (err) => {
+    if (err) console.warn('Legacy Run cleanup failed:', err.message);
+  });
 }
 
 app.commandLine.appendSwitch('ignore-certificate-errors');
@@ -1398,6 +1408,7 @@ app.whenReady().then(() => {
   const win = createWindow();
   createTray(win);
   setupAutoLaunch();
+  cleanupLegacyRunEntry();
   setupGeolocationPermission();
   attachContextMenu(win);
   initAutoUpdater();
