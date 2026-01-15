@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, dialog, session, screen, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, dialog, session, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
@@ -9,6 +9,7 @@ const http = require('http');
 const https = require('https');
 const { pathToFileURL } = require('url');
 const AdmZip = require('adm-zip');
+const AutoLaunch = require('auto-launch');
 const ini = require('ini');
 const { autoUpdater } = require('electron-updater');
 
@@ -23,52 +24,34 @@ const TRAY_ICON_CANDIDATES = [
   path.join(process.resourcesPath || __dirname, 'images', 'icon.ico'),
 ];
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
+const AUTO_LAUNCH_NAME = 'ADMed';
 
-function getShortcutIconPath() {
-  for (const candidate of TRAY_ICON_CANDIDATES) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  return '';
-}
-
-function getStartupShortcutPath() {
-  let startupDir = '';
+function cleanupStartupShortcut() {
+  // Remove legacy Startup folder shortcut to avoid duplicates.
   try {
-    startupDir = app.getPath('startup');
-  } catch (err) {
     const appData = process.env.APPDATA || '';
-    if (appData) {
-      startupDir = path.join(appData, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
-    }
+    if (!appData) return;
+    const startupDir = path.join(appData, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+    const shortcutPath = path.join(startupDir, `${AUTO_LAUNCH_NAME}.lnk`);
+    if (fs.existsSync(shortcutPath)) fs.unlinkSync(shortcutPath);
+  } catch (err) {
+    console.warn('Startup shortcut cleanup failed:', err.message);
   }
-  if (!startupDir) {
-    throw new Error("Failed to get 'startup' path");
-  }
-  const shortcutName = `${app.getName()}.lnk`;
-  return path.join(startupDir, shortcutName);
-}
-
-function buildStartupShortcutOptions() {
-  const icon = getShortcutIconPath();
-  const options = {
-    target: process.execPath,
-    args: app.isPackaged ? '' : `"${app.getAppPath()}"`,
-    description: app.getName(),
-    workingDirectory: path.dirname(process.execPath),
-  };
-  if (icon) {
-    options.icon = icon;
-    options.iconIndex = 0;
-  }
-  return options;
 }
 
 function cleanupLegacyRunEntry() {
-  // Remove legacy auto-launch Run entry to avoid duplicate startup items.
+  // Remove legacy HKCU Run entry so toggle OFF reliably stops auto-start.
   const regPath = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
-  const valueName = app.getName();
-  execFile('reg', ['delete', regPath, '/v', valueName, '/f'], { windowsHide: true }, (err) => {
+  execFile('reg', ['delete', regPath, '/v', AUTO_LAUNCH_NAME, '/f'], { windowsHide: true }, (err) => {
     if (err) console.warn('Legacy Run cleanup failed:', err.message);
+  });
+}
+
+function cleanupLegacyScheduledTask() {
+  // Best-effort removal of old auto-start scheduled task.
+  const taskName = `${AUTO_LAUNCH_NAME} AutoStart`;
+  execFile('schtasks', ['/Delete', '/TN', taskName, '/F'], { windowsHide: true }, (err) => {
+    if (err) console.warn('Scheduled task cleanup failed:', err.message);
   });
 }
 
@@ -81,6 +64,7 @@ let cacheServerPort = null;
 let cacheServerBase = null;
 let cacheServerReady = null;
 let tray = null;
+let autoLauncher = null;
 let pendingUpdateInstall = false;
 let windowState = null;
 let saveStateTimer = null;
@@ -426,16 +410,17 @@ function scheduleSaveWindowState() {
 
 async function setAutoLaunch(enabled) {
   try {
-    await app.whenReady();
-    const shortcutPath = getStartupShortcutPath();
-    const isEnabled = await isAutoLaunchEnabled();
+    if (!autoLauncher) return;
+    const isEnabled = await autoLauncher.isEnabled();
     if (enabled && !isEnabled) {
-      const ok = shell.writeShortcutLink(shortcutPath, buildStartupShortcutOptions());
-      if (!ok) throw new Error('startup shortcut create failed');
+      await autoLauncher.enable();
     } else if (!enabled && isEnabled) {
-      fs.unlinkSync(shortcutPath);
+      await autoLauncher.disable();
     }
-    autoLaunchEnabled = await isAutoLaunchEnabled();
+    autoLaunchEnabled = await autoLauncher.isEnabled();
+    if (!enabled) cleanupStartupShortcut();
+    if (!enabled) cleanupLegacyRunEntry();
+    if (!enabled) cleanupLegacyScheduledTask();
   } catch (err) {
     console.warn('Auto-launch setup failed:', err.message);
   }
@@ -443,9 +428,8 @@ async function setAutoLaunch(enabled) {
 
 async function isAutoLaunchEnabled() {
   try {
-    await app.whenReady();
-    const shortcutPath = getStartupShortcutPath();
-    return fs.existsSync(shortcutPath);
+    if (!autoLauncher) return false;
+    return await autoLauncher.isEnabled();
   } catch {
     return false;
   }
@@ -998,11 +982,11 @@ function createTray(win) {
 }
 
 function setupAutoLaunch() {
-  isAutoLaunchEnabled()
+  autoLauncher = new AutoLaunch({ name: AUTO_LAUNCH_NAME });
+  autoLauncher
+    .isEnabled()
     .then((enabled) => {
       autoLaunchEnabled = enabled;
-      if (!enabled) return setAutoLaunch(true);
-      return null;
     })
     .catch((err) => console.warn('Auto-launch setup failed:', err.message));
 }
@@ -1407,8 +1391,10 @@ app.whenReady().then(() => {
   windowState = loadWindowState();
   const win = createWindow();
   createTray(win);
-  setupAutoLaunch();
+  cleanupLegacyScheduledTask();
   cleanupLegacyRunEntry();
+  setupAutoLaunch();
+  cleanupStartupShortcut();
   setupGeolocationPermission();
   attachContextMenu(win);
   initAutoUpdater();

@@ -8,7 +8,7 @@
   - 시나리오 API(`SCENARIO_API_URL?id=<device_serial>`) 호출 → 템플릿 URL 생성(`TEMPLATE_BASE_URL`).  
   - 자산 캐시(`%TEMP%/admed-cache`) 관리, HLS ZIP 다운로드·압축 해제 후 로컬 HTTP 서버로 제공.  
   - IPC 핸들러 제공: 재생 목록 준비, 공지 조회, 날씨/클리닉 설정 전달, 컨텍스트 메뉴 호출.  
-  - 자동 실행(Startup folder shortcut), 트레이 아이콘, 창 상태 저장/복원, 자동 업데이트(`electron-updater`).  
+  - 자동 실행(`auto-launch`), 트레이 아이콘, 창 상태 저장/복원, 자동 업데이트(`electron-updater`).  
   - 관리자 설정(비밀번호 검증 후 `device_serial` 변경) UI를 모달로 렌더링.
 
 - **Renderer(Process)**  
