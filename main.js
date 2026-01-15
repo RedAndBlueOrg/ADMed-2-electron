@@ -39,12 +39,20 @@ function cleanupStartupShortcut() {
   }
 }
 
-function cleanupLegacyRunEntry() {
-  // Remove legacy HKCU Run entry so toggle OFF reliably stops auto-start.
-  const regPath = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
-  execFile('reg', ['delete', regPath, '/v', AUTO_LAUNCH_NAME, '/f'], { windowsHide: true }, (err) => {
-    if (err) console.warn('Legacy Run cleanup failed:', err.message);
-  });
+function setStartupApproved(enabled) {
+  // Ensure Windows Startup Apps list reflects the toggle state.
+  const regPath = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run';
+  const enabledValue = '02,00,00,00,00,00,00,00,00,00,00,00';
+  const disabledValue = '03,00,00,00,00,00,00,00,00,00,00,00';
+  const data = enabled ? enabledValue : disabledValue;
+  execFile(
+    'reg',
+    ['add', regPath, '/v', AUTO_LAUNCH_NAME, '/t', 'REG_BINARY', '/d', data, '/f'],
+    { windowsHide: true },
+    (err) => {
+      if (err) console.warn('StartupApproved update failed:', err.message);
+    }
+  );
 }
 
 function cleanupLegacyScheduledTask() {
@@ -418,8 +426,8 @@ async function setAutoLaunch(enabled) {
       await autoLauncher.disable();
     }
     autoLaunchEnabled = await autoLauncher.isEnabled();
+    setStartupApproved(enabled);
     if (!enabled) cleanupStartupShortcut();
-    if (!enabled) cleanupLegacyRunEntry();
     if (!enabled) cleanupLegacyScheduledTask();
   } catch (err) {
     console.warn('Auto-launch setup failed:', err.message);
@@ -1392,7 +1400,6 @@ app.whenReady().then(() => {
   const win = createWindow();
   createTray(win);
   cleanupLegacyScheduledTask();
-  cleanupLegacyRunEntry();
   setupAutoLaunch();
   cleanupStartupShortcut();
   setupGeolocationPermission();
