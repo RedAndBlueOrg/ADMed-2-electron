@@ -1,10 +1,10 @@
-동작 워크플로 (v2.0.1)
+동작 워크플로 (v2.0.3)
 =====================
 
 앱 시작
 -------
 1. `.env` → `device_config.ini`(`device_serial`) → `window-state.ini`를 로드해 환경/창 상태를 초기화합니다.
-2. 자동 실행(`auto-launch`)과 트레이 아이콘을 설정하고, geolocation 권한을 자동 승인하도록 세션 핸들러를 등록합니다.
+2. 자동 실행(Startup folder shortcut)과 트레이 아이콘을 설정하고, geolocation 권한을 자동 승인하도록 세션 핸들러를 등록합니다.
 3. 패키지 모드일 경우 자동 업데이트(`electron-updater`)를 시작합니다.
 
 재생 목록 준비

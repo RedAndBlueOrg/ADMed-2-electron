@@ -231,18 +231,13 @@ function updateDownloadOverlay({ total = 0, finished = 0, active = false, curren
     downloadProgressBar.setAttribute('aria-valuenow', String(percent));
   }
 
-  if (!isActive && totalCount === 0) {
+  if (!isActive) {
     downloadOverlay.classList.remove('visible');
     return;
   }
 
   downloadOverlay.classList.add('visible');
-
-  if (!isActive && totalCount > 0) {
-    downloadHideTimer = setTimeout(() => {
-      if (downloadOverlay) downloadOverlay.classList.remove('visible');
-    }, 900);
-  }
+  if (statusOverlay) statusOverlay.style.display = 'none';
 }
 
 function setupDownloadProgressListener() {

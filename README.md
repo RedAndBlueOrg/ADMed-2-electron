@@ -5,7 +5,7 @@ ADMed (Windows Electron)
 ----
 - 의료기관 현장에서 시나리오 API가 내려주는 재생 목록(이미지/동영상/HLS)을 받아 로컬 캐시로 재생하는 Windows용 Electron 플레이어입니다.
 - 재생 목록 외에도 공지사항, 대기 현황, 날씨 정보를 표시하며, 진료실 호출 알림과 랜딩 페이지(대기 화면)까지 포함합니다.
-- 2.0.1이 최신 버전이며, 자동 업데이트를 통해 배포된 릴리스를 받아 설치합니다.
+- 2.0.3이 최신 버전이며, 자동 업데이트를 통해 배포된 릴리스를 받아 설치합니다.
 
 요구사항
 --------
@@ -34,7 +34,7 @@ npm run dist   # 배포용 설치 파일 생성(NSIS)
 - **대기/클리닉 연동**: REST(`CLINIC_API_ORIGIN/dapi/clinic/list`)로 초기 대기열을 받고, WebSocket(`CLINIC_WS_ORIGIN/clinic/topic/<memberSeq>/<clinicSeq?>`)으로 실시간 변동·호출 알림을 수신합니다. 팝업+음성(`modalAudio.wav`)으로 호출 안내를 제공합니다.
 - **날씨 패널**: `WEATHER_LAT/LON`이 있으면 해당 좌표로, 없으면 위치 권한/GeoIP(IP)로 좌표를 얻어 기상청 초단기예보(`WEATHER_SERVICE_URL/WEATHER_SERVICE_KEY`)를 조회합니다. 대기 모드 `B`일 때만 표시합니다.
 - **윈도우/트레이 제어**: 창 크기·위치·전체화면/항상위 설정을 저장(`%APPDATA%/ADMed/window-state.ini`)하고 컨텍스트 메뉴에서 프리셋·중앙정렬·리로드·자동 실행 토글 등을 제공합니다. 트레이 아이콘으로 최소화/종료를 지원합니다.
-- **자동 실행 & 업데이트**: `auto-launch`로 Windows 시작 시 자동 실행되며, `electron-updater`가 GitHub Releases(리포지토리 `RedAndBlueOrg/ADMed-2-electron`)를 주기적으로 확인해 다운로드 후 자동 설치합니다. 개인 토큰(`GH_TOKEN`/`GITHUB_TOKEN`) 제공 시 비공개 릴리스도 처리합니다.
+- **자동 실행 & 업데이트**: Startup folder shortcut로 Windows 시작 시 자동 실행되며, `electron-updater`가 GitHub Releases(리포지토리 `RedAndBlueOrg/ADMed-2-electron`)를 주기적으로 확인해 다운로드 후 자동 설치합니다. 개인 토큰(`GH_TOKEN`/`GITHUB_TOKEN`) 제공 시 비공개 릴리스도 처리합니다.
 
 환경 변수
 --------

@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, dialog, session, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, dialog, session, screen, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { pipeline } = require('stream/promises');
@@ -8,7 +8,6 @@ const http = require('http');
 const https = require('https');
 const { pathToFileURL } = require('url');
 const AdmZip = require('adm-zip');
-const AutoLaunch = require('auto-launch');
 const ini = require('ini');
 const { autoUpdater } = require('electron-updater');
 
@@ -24,6 +23,45 @@ const TRAY_ICON_CANDIDATES = [
 ];
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 
+function getShortcutIconPath() {
+  for (const candidate of TRAY_ICON_CANDIDATES) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return '';
+}
+
+function getStartupShortcutPath() {
+  let startupDir = '';
+  try {
+    startupDir = app.getPath('startup');
+  } catch (err) {
+    const appData = process.env.APPDATA || '';
+    if (appData) {
+      startupDir = path.join(appData, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+    }
+  }
+  if (!startupDir) {
+    throw new Error("Failed to get 'startup' path");
+  }
+  const shortcutName = `${app.getName()}.lnk`;
+  return path.join(startupDir, shortcutName);
+}
+
+function buildStartupShortcutOptions() {
+  const icon = getShortcutIconPath();
+  const options = {
+    target: process.execPath,
+    args: app.isPackaged ? '' : `"${app.getAppPath()}"`,
+    description: app.getName(),
+    workingDirectory: path.dirname(process.execPath),
+  };
+  if (icon) {
+    options.icon = icon;
+    options.iconIndex = 0;
+  }
+  return options;
+}
+
 app.commandLine.appendSwitch('ignore-certificate-errors');
 // Enable WinRT geolocation (avoids Google API key requirement on Windows)
 app.commandLine.appendSwitch('enable-features', 'WinrtGeolocationImplementation');
@@ -33,7 +71,6 @@ let cacheServerPort = null;
 let cacheServerBase = null;
 let cacheServerReady = null;
 let tray = null;
-let autoLauncher = null;
 let pendingUpdateInstall = false;
 let windowState = null;
 let saveStateTimer = null;
@@ -378,15 +415,17 @@ function scheduleSaveWindowState() {
 }
 
 async function setAutoLaunch(enabled) {
-  if (!autoLauncher) return;
   try {
-    const isEnabled = await autoLauncher.isEnabled();
+    await app.whenReady();
+    const shortcutPath = getStartupShortcutPath();
+    const isEnabled = await isAutoLaunchEnabled();
     if (enabled && !isEnabled) {
-      await autoLauncher.enable();
+      const ok = shell.writeShortcutLink(shortcutPath, buildStartupShortcutOptions());
+      if (!ok) throw new Error('startup shortcut create failed');
     } else if (!enabled && isEnabled) {
-      await autoLauncher.disable();
+      fs.unlinkSync(shortcutPath);
     }
-    autoLaunchEnabled = await autoLauncher.isEnabled();
+    autoLaunchEnabled = await isAutoLaunchEnabled();
   } catch (err) {
     console.warn('Auto-launch setup failed:', err.message);
   }
@@ -394,8 +433,9 @@ async function setAutoLaunch(enabled) {
 
 async function isAutoLaunchEnabled() {
   try {
-    if (!autoLauncher) return false;
-    return await autoLauncher.isEnabled();
+    await app.whenReady();
+    const shortcutPath = getStartupShortcutPath();
+    return fs.existsSync(shortcutPath);
   } catch {
     return false;
   }
@@ -948,12 +988,10 @@ function createTray(win) {
 }
 
 function setupAutoLaunch() {
-  autoLauncher = new AutoLaunch({ name: 'ADMed' });
-  autoLauncher
-    .isEnabled()
+  isAutoLaunchEnabled()
     .then((enabled) => {
       autoLaunchEnabled = enabled;
-      if (!enabled) return autoLauncher.enable();
+      if (!enabled) return setAutoLaunch(true);
       return null;
     })
     .catch((err) => console.warn('Auto-launch setup failed:', err.message));
@@ -1064,18 +1102,34 @@ async function preparePlaylist() {
   let memberSeq = null;
   let downloadTotal = 0;
   let downloadFinished = 0;
+  let downloadActive = 0;
   let currentDownloadTitle = '';
 
   const getItemDisplayName = (item) => item?.title || item?.id || item?.url || '';
 
   const notifyDownload = (overrides = {}) => {
-    const active = downloadTotal > 0 && downloadFinished < downloadTotal;
+    const active = downloadActive > 0;
     sendDownloadProgress({
       total: downloadTotal,
       finished: Math.min(downloadFinished, downloadTotal),
       active,
       currentTitle: overrides.currentTitle ?? currentDownloadTitle ?? '',
     });
+  };
+
+  const beginActiveDownload = (overrides = {}) => {
+    downloadActive += 1;
+    notifyDownload(overrides);
+    return () => {
+      downloadActive = Math.max(0, downloadActive - 1);
+      notifyDownload();
+    };
+  };
+
+  const markSyncDone = (overrides = {}) => {
+    if (!downloadTotal) return;
+    downloadFinished = Math.min(downloadFinished + 1, downloadTotal);
+    notifyDownload(overrides);
   };
 
   try {
@@ -1089,6 +1143,10 @@ async function preparePlaylist() {
     playlist = [];
   }
 
+  downloadTotal = playlist.filter((item) => item?.url).length;
+  downloadFinished = 0;
+  notifyDownload();
+
   const prepared = [];
   const backgroundDownloads = [];
   const keepPaths = new Set();
@@ -1100,6 +1158,7 @@ async function preparePlaylist() {
     try {
       urlObj = new URL(item.url);
     } catch (err) {
+      markSyncDone();
       prepared.push({ ...item, error: '잘못된 URL' });
       continue;
     }
@@ -1130,6 +1189,7 @@ async function preparePlaylist() {
         type: 'hls',
         streamUrl: item.url,
       });
+      markSyncDone();
       // HLS 스트림은 로컬 캐시 없음
       continue;
     }
@@ -1141,17 +1201,15 @@ async function preparePlaylist() {
       currentDownloadTitle = getItemDisplayName(item);
 
       if (!fs.existsSync(zipPath) || !findFirstManifest(destDir)) {
-        downloadTotal += 1;
-        notifyDownload({ currentTitle: currentDownloadTitle });
+        const endActive = beginActiveDownload({ currentTitle: currentDownloadTitle });
         try {
           const dl = await downloadFileWithHeaders(item.url, zipPath);
           extractZip(zipPath, destDir);
-          downloadFinished += 1;
-          notifyDownload({ currentTitle: currentDownloadTitle });
+          endActive();
         } catch (err) {
           console.error(`download failed for package ${item.url}`, err);
-          downloadFinished += 1;
-          notifyDownload({ currentTitle: currentDownloadTitle });
+          endActive();
+          markSyncDone({ currentTitle: currentDownloadTitle });
           prepared.push({ ...item, type: 'hls', streamUrl: item.url, error: err.message });
           continue;
         }
@@ -1159,6 +1217,7 @@ async function preparePlaylist() {
 
       const manifestPath = findFirstManifest(destDir);
       if (!manifestPath) {
+        markSyncDone({ currentTitle: currentDownloadTitle });
         prepared.push({ ...item, type: 'hls', streamUrl: item.url, error: '패키지 내 m3u8 없음' });
         continue;
       }
@@ -1175,6 +1234,7 @@ async function preparePlaylist() {
         streamUrl: localUrl,
         packageDir: destDir,
       });
+      markSyncDone({ currentTitle: currentDownloadTitle });
       continue;
     }
 
@@ -1186,6 +1246,7 @@ async function preparePlaylist() {
         localFile: pathToFileURL(destPath).href,
         cachePath: destPath,
       });
+      markSyncDone();
       continue;
     }
 
@@ -1199,18 +1260,18 @@ async function preparePlaylist() {
 
     const downloadTitle = getItemDisplayName(item);
     currentDownloadTitle = downloadTitle;
-    downloadTotal += 1;
-    notifyDownload({ currentTitle: downloadTitle });
+    const endActive = beginActiveDownload({ currentTitle: downloadTitle });
 
     const dl = downloadFile(item.url, destPath)
       .then(() => {
-        downloadFinished += 1;
-        notifyDownload({ currentTitle: downloadTitle });
+        markSyncDone({ currentTitle: downloadTitle });
       })
       .catch((err) => {
         console.error(`download failed (bg) for ${item.url}`, err);
-        downloadFinished += 1;
-        notifyDownload({ currentTitle: downloadTitle });
+        markSyncDone({ currentTitle: downloadTitle });
+      })
+      .finally(() => {
+        endActive();
       });
 
     backgroundDownloads.push(dl);
