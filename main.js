@@ -41,26 +41,47 @@ function cleanupStartupShortcut() {
 
 function setStartupApproved(enabled) {
   // Ensure Windows Startup Apps list reflects the toggle state.
-  const regPath = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run';
-  const enabledValue = '02,00,00,00,00,00,00,00,00,00,00,00';
-  const disabledValue = '03,00,00,00,00,00,00,00,00,00,00,00';
-  const data = enabled ? enabledValue : disabledValue;
-  execFile(
-    'reg',
-    ['add', regPath, '/v', AUTO_LAUNCH_NAME, '/t', 'REG_BINARY', '/d', data, '/f'],
-    { windowsHide: true },
-    (err) => {
-      if (err) console.warn('StartupApproved update failed:', err.message);
-    }
-  );
+  return new Promise((resolve) => {
+    const regPath = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run';
+    const enabledValue = '02,00,00,00,00,00,00,00,00,00,00,00';
+    const disabledValue = '03,00,00,00,00,00,00,00,00,00,00,00';
+    const data = enabled ? enabledValue : disabledValue;
+    execFile(
+      'reg',
+      ['add', regPath, '/v', AUTO_LAUNCH_NAME, '/t', 'REG_BINARY', '/d', data, '/f'],
+      { windowsHide: true },
+      (err) => {
+        if (err) console.warn('StartupApproved update failed:', err.message);
+        resolve();
+      }
+    );
+  });
 }
 
 function cleanupLegacyScheduledTask() {
   // Best-effort removal of old auto-start scheduled task.
   const taskName = `${AUTO_LAUNCH_NAME} AutoStart`;
   execFile('schtasks', ['/Delete', '/TN', taskName, '/F'], { windowsHide: true }, (err) => {
-    if (err) console.warn('Scheduled task cleanup failed:', err.message);
+    if (err && !err.message?.includes('does not exist')) {
+      console.warn('Scheduled task cleanup failed:', err.message);
+    }
   });
+}
+
+function cleanupAllLegacyAutoStart() {
+  // Cleanup legacy auto-start methods that conflict with auto-launch library.
+  // NOTE: Do NOT clean Run registry - auto-launch library uses that location!
+  // Only clean: startup folder shortcuts and scheduled tasks (old methods)
+  return Promise.all([
+    new Promise((resolve) => {
+      cleanupStartupShortcut();
+      resolve();
+    }),
+    new Promise((resolve) => {
+      cleanupLegacyScheduledTask();
+      resolve();
+    }),
+  ]);
 }
 
 app.commandLine.appendSwitch('ignore-certificate-errors');
@@ -419,16 +440,22 @@ function scheduleSaveWindowState() {
 async function setAutoLaunch(enabled) {
   try {
     if (!autoLauncher) return;
+
+    // Always clean up legacy entries first to prevent conflicts
+    // This ensures only auto-launch library manages startup
+    await cleanupAllLegacyAutoStart();
+
     const isEnabled = await autoLauncher.isEnabled();
     if (enabled && !isEnabled) {
       await autoLauncher.enable();
     } else if (!enabled && isEnabled) {
       await autoLauncher.disable();
     }
+
     autoLaunchEnabled = await autoLauncher.isEnabled();
-    setStartupApproved(enabled);
-    if (!enabled) cleanupStartupShortcut();
-    if (!enabled) cleanupLegacyScheduledTask();
+
+    // Sync StartupApproved registry to ensure Windows Settings shows correct state
+    await setStartupApproved(autoLaunchEnabled);
   } catch (err) {
     console.warn('Auto-launch setup failed:', err.message);
   }
@@ -989,14 +1016,21 @@ function createTray(win) {
   }
 }
 
-function setupAutoLaunch() {
+async function setupAutoLaunch() {
   autoLauncher = new AutoLaunch({ name: AUTO_LAUNCH_NAME });
-  autoLauncher
-    .isEnabled()
-    .then((enabled) => {
-      autoLaunchEnabled = enabled;
-    })
-    .catch((err) => console.warn('Auto-launch setup failed:', err.message));
+  try {
+    // Clean up any legacy entries first to prevent conflicts
+    await cleanupAllLegacyAutoStart();
+
+    // Check current auto-launch status
+    autoLaunchEnabled = await autoLauncher.isEnabled();
+
+    // Sync StartupApproved registry to match current state
+    // This ensures Windows Settings app shows correct status
+    await setStartupApproved(autoLaunchEnabled);
+  } catch (err) {
+    console.warn('Auto-launch setup failed:', err.message);
+  }
 }
 
 function setupGeolocationPermission() {
@@ -1395,13 +1429,14 @@ function initAutoUpdater() {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   windowState = loadWindowState();
   const win = createWindow();
   createTray(win);
-  cleanupLegacyScheduledTask();
-  setupAutoLaunch();
-  cleanupStartupShortcut();
+
+  // setupAutoLaunch handles all legacy cleanup and registry sync
+  await setupAutoLaunch();
+
   setupGeolocationPermission();
   attachContextMenu(win);
   initAutoUpdater();

@@ -1,6 +1,6 @@
 {
   "name": "admed",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "description": "ADMed for Windows",
   "main": "main.js",
   "type": "commonjs",
@@ -12,6 +12,7 @@
     "dev": "electron .",
     "rebuild": "electron-rebuild -f -w keytar",
     "dist": "electron-builder --win nsis --publish always",
+    "dist:local": "electron-builder --win nsis --publish never",
     "pack:dir": "electron-builder --dir",
     "postinstall": "electron-builder install-app-deps"
   },
