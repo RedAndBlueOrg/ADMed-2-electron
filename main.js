@@ -3,12 +3,11 @@
 const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, dialog, session, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { execFile } = require('child_process');
+const { execFile, fork } = require('child_process');
 const { pipeline } = require('stream/promises');
 const http = require('http');
 const https = require('https');
 const { pathToFileURL } = require('url');
-const AdmZip = require('adm-zip');
 const AutoLaunch = require('auto-launch');
 const ini = require('ini');
 const { autoUpdater } = require('electron-updater');
@@ -104,21 +103,10 @@ let autoLaunchEnabled = false;
 app.isQuiting = false;
 let configIni = { deviceSerial: '' };
 let clinicWsConfig = null;
-const CLINIC_BACKOFF_MAX = 30000;
-const WebSocketImpl = typeof WebSocket !== 'undefined' ? WebSocket : null;
-const clinicSessions = new Map(); // key: seq|null, value: { ws, timer, delay }
+const { Client: StompClient } = require('@stomp/stompjs');
+const WsImpl = require('ws');
 
-function getWsImpl() {
-  if (WebSocketImpl) return WebSocketImpl;
-  try {
-    // lazy import to avoid hard dependency if not installed
-    // eslint-disable-next-line global-require
-    return require('ws');
-  } catch (err) {
-    console.warn('[clinic] WebSocket implementation unavailable:', err.message);
-    return null;
-  }
-}
+let stompClient = null;
 
 function sendClinicWsEvent(payload) {
   const wins = BrowserWindow.getAllWindows();
@@ -139,98 +127,67 @@ function sendDownloadProgress(payload) {
 }
 
 function stopClinicSocket() {
-  for (const [, session] of clinicSessions) {
-    if (session.timer) clearTimeout(session.timer);
-    if (session.ws) {
-      try {
-        session.ws.close();
-      } catch (_) {
-        /* noop */
-      }
-    }
+  if (stompClient) {
+    try { stompClient.deactivate(); } catch (_) { /* noop */ }
+    stompClient = null;
   }
-  clinicSessions.clear();
 }
 
 function startClinicSocket(config) {
   const memberSeq = config?.memberSeq;
-  const clinicSeqList = Array.isArray(config?.clinicSeqList)
-    ? config.clinicSeqList.filter((v) => v !== undefined && v !== null)
-    : [config?.clinicSeq].filter((v) => v !== undefined && v !== null);
   const origin = config?.clinicWsOrigin;
   if (!memberSeq || !origin) {
     stopClinicSocket();
     return;
   }
-  const WsCtor = getWsImpl();
-  if (!WsCtor) return;
 
   stopClinicSocket();
-  clinicWsConfig = { memberSeq, clinicSeqList, clinicWsOrigin: origin };
+  clinicWsConfig = {
+    memberSeq,
+    clinicSeqList: config.clinicSeqList || [],
+    clinicWsOrigin: origin,
+  };
 
-  const targets = [null, ...clinicSeqList];
+  const brokerURL = origin.replace(/^http/, 'ws').replace(/\/+$/, '') + '/ws/websocket';
 
-  for (const clinicSeq of targets) {
-    const key = clinicSeq === null ? 'all' : clinicSeq;
-    const urlBase = `${origin.replace(/\/+$/, '')}/clinic/topic/${memberSeq}`;
-    const url = clinicSeq ? `${urlBase}/${clinicSeq}` : urlBase;
+  stompClient = new StompClient({
+    brokerURL,
+    webSocketFactory: () => new WsImpl(brokerURL),
+    heartbeatIncoming: 4000,
+    heartbeatOutgoing: 4000,
+    reconnectDelay: 3000,
+    debug: () => {},
 
-    const connect = () => {
-      let ws;
-      try {
-        ws = new WsCtor(url);
-      } catch (err) {
-        console.warn('[clinic] WS open failed:', err.message);
-        scheduleReconnect(key);
-        return;
-      }
-      clinicSessions.set(key, { ws, timer: null, delay: 1000 });
+    onConnect: () => {
+      console.log('[clinic] STOMP connected, subscribing to /topic/clinic/' + memberSeq);
+      sendClinicWsEvent({ type: 'status', status: 'open', clinicSeq: null });
 
-      ws.onopen = () => {
-        const session = clinicSessions.get(key);
-        if (session) session.delay = 1000;
-        sendClinicWsEvent({ type: 'status', status: 'open', clinicSeq });
-      };
-
-      ws.onmessage = (event) => {
+      stompClient.subscribe(`/topic/clinic/${memberSeq}`, (message) => {
         try {
-          const raw = event?.data || event;
-          const text = Buffer.isBuffer(raw) ? raw.toString('utf-8') : raw?.toString?.() || '';
-          const parsed = text ? JSON.parse(text) : null;
-          sendClinicWsEvent({ type: 'data', data: parsed, raw: text, clinicSeq });
+          const parsed = JSON.parse(message.body);
+          sendClinicWsEvent({ type: 'data', data: parsed, raw: message.body, clinicSeq: null });
         } catch (err) {
-          console.warn('[clinic] WS message parse failed:', err.message);
+          console.warn('[clinic] STOMP message parse failed:', err.message);
         }
-      };
+      });
+    },
 
-      ws.onerror = (err) => {
-        console.warn('[clinic] WS error:', err?.message || err);
-        sendClinicWsEvent({ type: 'status', status: 'error', error: err?.message || String(err), clinicSeq });
-      };
+    onStompError: (frame) => {
+      console.warn('[clinic] STOMP error:', frame.headers?.message);
+      sendClinicWsEvent({
+        type: 'status',
+        status: 'error',
+        error: frame.headers?.message,
+        clinicSeq: null,
+      });
+    },
 
-      ws.onclose = () => {
-        const session = clinicSessions.get(key);
-        sendClinicWsEvent({ type: 'status', status: 'closed', clinicSeq });
-        if (session) scheduleReconnect(key);
-      };
-    };
+    onWebSocketClose: () => {
+      sendClinicWsEvent({ type: 'status', status: 'closed', clinicSeq: null });
+    },
+  });
 
-    const scheduleReconnect = (k) => {
-      const session = clinicSessions.get(k) || { ws: null, timer: null, delay: 1000 };
-      if (session.timer) return;
-      const delay = session.delay || 1000;
-      const nextDelay = Math.min(delay * 2, CLINIC_BACKOFF_MAX);
-      session.timer = setTimeout(() => {
-        session.timer = null;
-        session.delay = nextDelay;
-        clinicSessions.set(k, session);
-        connect();
-      }, delay);
-      clinicSessions.set(k, session);
-    };
-
-    connect();
-  }
+  stompClient.activate();
 }
 
 function ensureDir(dirPath) {
@@ -474,10 +431,10 @@ function selectHttpModule(url) {
   return url.startsWith('https') ? https : http;
 }
 
-async function downloadFileWithHeaders(url, destPath) {
+async function downloadFileWithHeaders(url, destPath, { maxRetries = 3 } = {}) {
   const tempPath = `${destPath}.part`;
 
-  return new Promise((resolve, reject) => {
+  const attempt = () => new Promise((resolve, reject) => {
     const mod = selectHttpModule(url);
     const request = mod.get(url, (response) => {
       if (response.statusCode && response.statusCode >= 400) {
@@ -494,6 +451,22 @@ async function downloadFileWithHeaders(url, destPath) {
 
     request.on('error', reject);
   });
+
+  let lastErr;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await attempt();
+    } catch (err) {
+      lastErr = err;
+      const isRetryable = ['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED', 'EPIPE', 'EAI_AGAIN'].includes(err.code)
+        || /aborted|socket hang up/i.test(err.message);
+      if (!isRetryable || i === maxRetries - 1) throw err;
+      const delay = 1000 * (i + 1); // 1초, 2초, 3초
+      console.warn(`[download] retry ${i + 1}/${maxRetries} in ${delay}ms: ${err.code || err.message}`);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+  throw lastErr;
 }
 
 function getScenarioApiUrl() {
@@ -563,12 +536,57 @@ async function startCacheServer(cacheRoot) {
         '.jpeg': 'image/jpeg',
         '.png': 'image/png',
       };
-      res.setHeader('Content-Type', mimeMap[ext] || 'application/octet-stream');
+      const mime = mimeMap[ext] || 'application/octet-stream';
+      res.setHeader('Content-Type', mime);
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Range, Accept, Origin');
       res.setHeader('Accept-Ranges', 'bytes');
-      fs.createReadStream(targetPath).pipe(res);
+      res.setHeader('Cache-Control', 'no-cache');
+
+      const rangeHeader = req.headers.range;
+      let start = 0;
+      let end = stat.size - 1;
+
+      if (rangeHeader) {
+        const match = rangeHeader.match(/bytes=(\d*)-(\d*)/);
+        if (match) {
+          start = match[1] ? parseInt(match[1], 10) : 0;
+          end = match[2] ? parseInt(match[2], 10) : stat.size - 1;
+        }
+        if (start > end || start >= stat.size) {
+          res.statusCode = 416;
+          res.setHeader('Content-Range', `bytes */${stat.size}`);
+          res.end();
+          return;
+        }
+        if (end >= stat.size) end = stat.size - 1;
+        res.statusCode = 206;
+        res.setHeader('Content-Range', `bytes ${start}-${end}/${stat.size}`);
+      } else {
+        res.statusCode = 200;
+      }
+
+      res.setHeader('Content-Length', end - start + 1);
+
+      if (req.method === 'HEAD') {
+        res.end();
+        return;
+      }
+
+      if (ext === '.ts') {
+        // .ts 세그먼트는 통째로 읽어서 전송 (스트리밍 파이프 문제 방지)
+        fs.readFile(targetPath, (readErr, buf) => {
+          if (readErr) { res.statusCode = 500; res.end(); return; }
+          const slice = (rangeHeader) ? buf.subarray(start, end + 1) : buf;
+          res.end(slice);
+        });
+      } else {
+        const stream = fs.createReadStream(targetPath, { start, end });
+        stream.on('error', () => { if (!res.headersSent) res.statusCode = 500; res.end(); });
+        req.on('close', () => { stream.destroy(); });
+        stream.pipe(res);
+      }
     });
   });
 
@@ -586,8 +604,23 @@ async function startCacheServer(cacheRoot) {
 }
 
 function extractZip(zipPath, targetDir) {
-  const zip = new AdmZip(zipPath);
-  zip.extractAllTo(targetDir, true);
+  return new Promise((resolve, reject) => {
+    const workerPath = path.join(__dirname, 'extract-worker.js');
+    const child = fork(workerPath, { silent: true });
+
+    child.on('message', (msg) => {
+      if (msg.ok) resolve();
+      else reject(new Error(msg.error || 'extract failed'));
+    });
+
+    child.on('error', reject);
+
+    child.on('exit', (code) => {
+      if (code !== 0) reject(new Error(`extract-worker exited with code ${code}`));
+    });
+
+    child.send({ zipPath, targetDir });
+  });
 }
 
 function findFirstManifest(dirPath) {
@@ -1083,6 +1116,8 @@ function createWindow() {
   Menu.setApplicationMenu(null);
   win.loadFile('index.html');
 
+  // win.webContents.openDevTools();
+
   // 드래그 영역에서의 기본 시스템 메뉴 차단 (우클릭 메뉴 방지)
   win.on('system-context-menu', (event) => {
     event.preventDefault();
@@ -1179,7 +1214,29 @@ async function preparePlaylist() {
     playlist = [];
   }
 
-  downloadTotal = playlist.filter((item) => item?.url).length;
+  // 실제 다운로드가 필요한 항목만 카운트 (캐시 히트 제외)
+  const needsDownload = playlist.filter((item) => {
+    if (!item?.url) return false;
+    const isHlsZip = item.type === 'hls-zip';
+    const isHls = item.type === 'hls' || (!isHlsZip && (item.url.endsWith('.m3u8') || false));
+    if (isHls) return false; // HLS 스트림은 다운로드 없음
+    if (isHlsZip) {
+      const base = (item.id || '').replace(/[^a-zA-Z0-9._-]/g, '-');
+      const destDir = path.join(cacheRoot, base);
+      const zipPath = path.join(cacheRoot, `${base}.zip`);
+      return !fs.existsSync(zipPath) || !findFirstManifest(destDir);
+    }
+    try {
+      const u = new URL(item.url);
+      let ext = path.extname(u.pathname);
+      if (!ext) { const q = u.searchParams.get('type'); if (q) ext = `.${q}`; }
+      const inferredType = /\.(jpg|jpeg|png|gif|webp)$/i.test(ext) ? 'image' : 'video';
+      const extFallback = (item.type || inferredType) === 'image' ? '.jpg' : '.mp4';
+      const base = (item.id || u.searchParams.get('img') || path.basename(u.pathname) || 'asset').replace(/[^a-zA-Z0-9._-]/g, '-');
+      return !fs.existsSync(path.join(cacheRoot, `${base}${ext || extFallback}`));
+    } catch { return true; }
+  });
+  downloadTotal = needsDownload.length;
   downloadFinished = 0;
   notifyDownload();
 
@@ -1225,8 +1282,7 @@ async function preparePlaylist() {
         type: 'hls',
         streamUrl: item.url,
       });
-      markSyncDone();
-      // HLS 스트림은 로컬 캐시 없음
+      // HLS 스트림은 로컬 캐시 없음 — 다운로드 카운트 안 함
       continue;
     }
 
@@ -1235,12 +1291,13 @@ async function preparePlaylist() {
       ensureDir(destDir);
       const zipPath = path.join(cacheRoot, `${safeBase}.zip`);
       currentDownloadTitle = getItemDisplayName(item);
+      const alreadyCached = fs.existsSync(zipPath) && !!findFirstManifest(destDir);
 
-      if (!fs.existsSync(zipPath) || !findFirstManifest(destDir)) {
+      if (!alreadyCached) {
         const endActive = beginActiveDownload({ currentTitle: currentDownloadTitle });
         try {
           const dl = await downloadFileWithHeaders(item.url, zipPath);
-          extractZip(zipPath, destDir);
+          await extractZip(zipPath, destDir);
           endActive();
         } catch (err) {
           console.error(`download failed for package ${item.url}`, err);
@@ -1253,7 +1310,7 @@ async function preparePlaylist() {
 
       const manifestPath = findFirstManifest(destDir);
       if (!manifestPath) {
-        markSyncDone({ currentTitle: currentDownloadTitle });
+        if (!alreadyCached) markSyncDone({ currentTitle: currentDownloadTitle });
         prepared.push({ ...item, type: 'hls', streamUrl: item.url, error: '패키지 내 m3u8 없음' });
         continue;
       }
@@ -1270,7 +1327,7 @@ async function preparePlaylist() {
         streamUrl: localUrl,
         packageDir: destDir,
       });
-      markSyncDone({ currentTitle: currentDownloadTitle });
+      if (!alreadyCached) markSyncDone({ currentTitle: currentDownloadTitle });
       continue;
     }
 
@@ -1282,7 +1339,7 @@ async function preparePlaylist() {
         localFile: pathToFileURL(destPath).href,
         cachePath: destPath,
       });
-      markSyncDone();
+      // 캐시 히트 — 다운로드 카운트 안 함
       continue;
     }
 

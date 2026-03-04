@@ -607,13 +607,6 @@ async function fetchClinicList() {
     });
     clinicSeqList = seqList;
     if (seqList.length) clinicSeqHint = seqList[0];
-    if (window.clinicWS?.start) {
-      window.clinicWS.start({
-        memberSeq: clinicMemberSeq,
-        clinicWsOrigin,
-        clinicSeqList: seqList,
-      });
-    }
     renderClinicList();
   } catch (err) {
     console.warn('[clinic] list fetch failed:', err.message);
@@ -938,7 +931,18 @@ function playIndex(idx) {
 
   if (item.type === 'hls') {
     if (window.Hls && window.Hls.isSupported()) {
-      hlsInstance = new window.Hls();
+      hlsInstance = new window.Hls({
+        enableWorker: true,
+        progressive: true,
+        lowLatencyMode: false,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+        maxBufferSize: 60 * 1000000,
+        maxBufferHole: 0.5,
+        fragLoadingMaxRetry: 6,
+        manifestLoadingMaxRetry: 6,
+        levelLoadingMaxRetry: 6,
+      });
       hlsInstance.loadSource(item.streamUrl);
       hlsInstance.attachMedia(videoEl);
       videoEl.autoplay = true;
@@ -946,14 +950,69 @@ function playIndex(idx) {
         log(`HLS manifest loaded: ${title}`);
         videoEl.play().catch((err) => log(`Playback error (HLS): ${err.message}`));
       });
+
+      // 멈춤 감지: 3초간 재생 안 되면 문제 구간 건너뛰기
+      let lastTime = -1;
+      let stallCount = 0;
+      let stalledTimer = null;
+
+      function clearStalledTimer() {
+        if (stalledTimer) { clearTimeout(stalledTimer); stalledTimer = null; }
+      }
+
+      function checkStalled() {
+        if (!hlsInstance || !videoEl || videoEl.paused || videoEl.ended) return;
+        if (lastTime >= 0 && Math.abs(videoEl.currentTime - lastTime) < 0.1) {
+          stallCount++;
+          // 1차: 12초 앞으로 건너뛰기 (세그먼트 1개 분량)
+          // 2차: 한번 더 시도
+          // 3차: 다음 콘텐츠로
+          if (stallCount <= 2) {
+            const seekTo = videoEl.currentTime + 5;
+            log(`HLS stall #${stallCount}: seeking from ${videoEl.currentTime.toFixed(1)}s to ${seekTo.toFixed(1)}s`);
+            videoEl.currentTime = seekTo;
+            videoEl.play().catch(() => {});
+          } else {
+            log('HLS stall persists after seek, skipping to next content');
+            clearStalledTimer();
+            destroyHls();
+            playNext();
+            return;
+          }
+        } else {
+          stallCount = 0;
+        }
+        lastTime = videoEl.currentTime;
+        stalledTimer = setTimeout(checkStalled, 3000);
+      }
+
+      stalledTimer = setTimeout(checkStalled, 3000);
+      videoEl.addEventListener('ended', clearStalledTimer, { once: true });
+
       hlsInstance.on(window.Hls.Events.ERROR, (_, data) => {
-        const code = data?.response?.code;
-        const url = data?.networkDetails?.responseURL || item.streamUrl;
-        log(`HLS error [${data.type}/${data.details}] code=${code ?? '?'} url=${url} ${data.reason || ''}`);
-        if (data.fatal) {
-          log('HLS fatal error, skipping to next content');
-          destroyHls();
-          playNext();
+        log(`HLS error [${data.type}/${data.details}]`);
+        if (!data.fatal) {
+          if (videoEl && !videoEl.paused) {
+            videoEl.pause();
+            videoEl.play().catch(() => {});
+          }
+          return;
+        }
+        switch (data.type) {
+          case window.Hls.ErrorTypes.NETWORK_ERROR:
+            log('HLS network error, retrying...');
+            hlsInstance.startLoad();
+            break;
+          case window.Hls.ErrorTypes.MEDIA_ERROR:
+            log('HLS media error, recovering...');
+            hlsInstance.recoverMediaError();
+            break;
+          default:
+            log('HLS fatal error, skipping to next content');
+            clearStalledTimer();
+            destroyHls();
+            playNext();
+            break;
         }
       });
     } else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
