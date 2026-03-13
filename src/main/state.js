@@ -9,7 +9,6 @@ module.exports = {
   autoLauncher: null,
   pendingUpdateInstall: false,
   contentSyncing: false,
-  updateReadyWhileSyncing: false,
   windowState: null,
   saveStateTimer: null,
   mainWindow: null,

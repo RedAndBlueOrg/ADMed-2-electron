@@ -311,18 +311,6 @@ async function preparePlaylist() {
   const landingUrl = process.env.LANDING_URL || 'https://www.admed.kr';
 
   state.contentSyncing = false;
-  if (state.updateReadyWhileSyncing) {
-    state.updateReadyWhileSyncing = false;
-    console.log('[update] content sync finished – proceeding with deferred quitAndInstall');
-    setTimeout(() => {
-      try {
-        require('electron-updater').autoUpdater.quitAndInstall(false, true);
-      } catch (installErr) {
-        state.pendingUpdateInstall = false;
-        console.warn('[update] deferred quitAndInstall failed:', installErr?.message || installErr);
-      }
-    }, 1000);
-  }
 
   return {
     playlist: prepared,

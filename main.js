@@ -36,13 +36,6 @@ app.whenReady().then(async () => {
       return await preparePlaylist();
     } catch (err) {
       state.contentSyncing = false;
-      if (state.updateReadyWhileSyncing) {
-        state.updateReadyWhileSyncing = false;
-        console.log('[update] content sync failed – proceeding with deferred quitAndInstall');
-        setTimeout(() => {
-          try { require('electron-updater').autoUpdater.quitAndInstall(false, true); } catch (_) { state.pendingUpdateInstall = false; }
-        }, 1000);
-      }
       throw err;
     }
   });

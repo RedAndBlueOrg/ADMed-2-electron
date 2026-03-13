@@ -31,20 +31,17 @@ function initAutoUpdater() {
       broadcastUpdateEvent('update:ready', info);
       if (!state.pendingUpdateInstall) {
         state.pendingUpdateInstall = true;
-        if (state.contentSyncing) {
-          console.log('[update] content sync in progress – deferring quitAndInstall');
-          state.updateReadyWhileSyncing = true;
-        } else {
-          setTimeout(() => {
-            try {
-              autoUpdater.quitAndInstall(false, true);
-            } catch (installErr) {
-              state.pendingUpdateInstall = false;
-              console.warn('[update] quitAndInstall failed:', installErr?.message || installErr);
-              broadcastUpdateEvent('update:error', installErr?.message || String(installErr));
-            }
-          }, 1000);
-        }
+        // 업데이트 우선: 동기화 중이어도 즉시 설치 (재시작 후 동기화 재개)
+        console.log('[update] installing immediately (sync will resume after restart)');
+        setTimeout(() => {
+          try {
+            autoUpdater.quitAndInstall(false, true);
+          } catch (installErr) {
+            state.pendingUpdateInstall = false;
+            console.warn('[update] quitAndInstall failed:', installErr?.message || installErr);
+            broadcastUpdateEvent('update:error', installErr?.message || String(installErr));
+          }
+        }, 1000);
       }
     });
     autoUpdater.on('download-progress', (progress) => {
