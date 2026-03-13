@@ -2,16 +2,19 @@
 
 // Worker process for ZIP extraction — keeps the main process event loop free.
 // Usage: fork('extract-worker.js') and send { zipPath, targetDir }.
+// Uses 7-Zip to handle streaming ZIPs without EOCD (Central Directory).
 
-const AdmZip = require('adm-zip');
+const { execFile } = require('child_process');
+const { path7za } = require('7zip-bin');
 
 process.on('message', (msg) => {
-  try {
-    const zip = new AdmZip(msg.zipPath);
-    zip.extractAllTo(msg.targetDir, true);
-    process.send({ ok: true });
-  } catch (err) {
-    process.send({ ok: false, error: err.message });
-  }
-  process.exit(0);
+  const args = ['x', msg.zipPath, `-o${msg.targetDir}`, '-y', '-aoa'];
+  execFile(path7za, args, { maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+    if (err) {
+      process.send({ ok: false, error: err.message + (stderr ? ` | ${stderr}` : '') });
+    } else {
+      process.send({ ok: true });
+    }
+    process.exit(0);
+  });
 });

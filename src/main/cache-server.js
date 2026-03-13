@@ -159,17 +159,12 @@ function findFirstManifest(dirPath) {
 function cleanupCache(cacheRoot, keepPaths) {
   try {
     const entries = fs.readdirSync(cacheRoot, { withFileTypes: true });
-    const now = Date.now();
-    const staleMs = 15 * 60 * 1000;
 
     for (const entry of entries) {
       const fullPath = path.join(cacheRoot, entry.name);
       if (keepPaths.has(fullPath)) continue;
 
       try {
-        const stat = fs.statSync(fullPath);
-        if (now - stat.mtimeMs < staleMs) continue;
-
         if (entry.isDirectory()) {
           fs.rmSync(fullPath, { recursive: true, force: true });
         } else {

@@ -56,7 +56,8 @@ export function playIndex(idx) {
   resetMedia(item.type);
 
   if (!item.localFile && !item.streamUrl) {
-    log(`Playback unavailable: ${item.url || 'unknown'} (download failed?)`);
+    log(`Playback unavailable: ${item.url || 'unknown'} (download failed?), skipping`);
+    callPlayNext();
     return;
   }
 
@@ -99,7 +100,18 @@ export function playIndex(idx) {
       hlsInstance.loadSource(item.streamUrl);
       hlsInstance.attachMedia(videoEl);
       videoEl.autoplay = true;
+      let manifestLoaded = false;
+      const manifestTimeout = setTimeout(() => {
+        if (!manifestLoaded && hlsInstance) {
+          log(`HLS manifest timeout (15s): ${title}, skipping`);
+          destroyHls();
+          callPlayNext();
+        }
+      }, 15000);
+
       hlsInstance.on(window.Hls.Events.MANIFEST_PARSED, () => {
+        manifestLoaded = true;
+        clearTimeout(manifestTimeout);
         log(`HLS manifest loaded: ${title}`);
         videoEl.play().catch((err) => log(`Playback error (HLS): ${err.message}`));
       });

@@ -11,6 +11,8 @@ let retryTimer = null;
 let onlineCheckTimer = null;
 let onlineCheckStarted = false;
 let overlayTimer = null;
+let refreshTimer = null;
+const REFRESH_INTERVAL = 30 * 60 * 1000; // 30분마다 시나리오 갱신
 
 // --- Online detection ---
 
@@ -50,9 +52,27 @@ async function playNext() {
   const next = state.currentIndex + 1;
   if (next < state.playlist.length) {
     playIndex(next);
-  } else {
+  } else if (state.needsRefresh) {
+    // 갱신 예약이 있으면 시나리오 새로 불러오기
+    state.needsRefresh = false;
     await loadPlaylist({ fromCycle: true });
+  } else {
+    // 같은 플레이리스트를 처음부터 다시 재생
+    const firstPlayable = state.playlist.findIndex((item) => item.localFile || item.streamUrl);
+    if (firstPlayable >= 0) {
+      playIndex(firstPlayable);
+    } else {
+      await loadPlaylist({ fromCycle: true });
+    }
   }
+}
+
+function scheduleRefresh() {
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(() => {
+    state.needsRefresh = true;
+    log('[playlist] Scenario refresh scheduled (will apply after current cycle)');
+  }, REFRESH_INTERVAL);
 }
 
 // Register callback so media.js can call playNext without circular import
@@ -146,6 +166,8 @@ export async function loadPlaylist({ fromCycle = false, fromRecovery = false } =
     }
 
     state.currentIndex = 0;
+    state.needsRefresh = false;
+    scheduleRefresh();
     renderPlaylist();
 
     const firstPlayable = state.playlist.findIndex((item) => item.localFile || item.streamUrl);

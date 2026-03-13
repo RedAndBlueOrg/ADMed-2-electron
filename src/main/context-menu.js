@@ -5,7 +5,7 @@ const state = require('./state');
 const { ADMIN_PASSWORD, saveConfigIni } = require('./config');
 const { captureWindowState, scheduleSaveWindowState } = require('./window-state');
 const { setAutoLaunch, isAutoLaunchEnabled } = require('./auto-launch');
-const { promptInput, promptAdminSettings, promptError } = require('./dialogs');
+const { promptInput, promptAdminSettings, promptAdminMenu, promptError } = require('./dialogs');
 
 function setWindowSize(width, height) {
   if (!state.mainWindow || state.mainWindow.isDestroyed()) return;
@@ -111,17 +111,29 @@ function buildContextMenu() {
           await promptError({ title: '관리자 인증 실패', message: '비밀번호가 올바르지 않습니다.' });
         }
 
-        const currentSerial = state.configIni.deviceSerial || '';
-        const result = await promptAdminSettings({ currentSerial });
-        if (!result) return;
+        const choice = await promptAdminMenu();
+        if (!choice) return;
 
-        const prevSerial = state.configIni.deviceSerial || '';
-        saveConfigIni({
-          deviceSerial: result.deviceSerial || '',
-        });
-        const changed = prevSerial !== (result.deviceSerial || '');
-        if (changed && state.mainWindow && !state.mainWindow.isDestroyed()) {
-          try { state.mainWindow.webContents.reloadIgnoringCache(); } catch {}
+        if (choice === 'devtools') {
+          if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+            state.mainWindow.webContents.openDevTools();
+          }
+          return;
+        }
+
+        if (choice === 'serial') {
+          const currentSerial = state.configIni.deviceSerial || '';
+          const result = await promptAdminSettings({ currentSerial });
+          if (!result) return;
+
+          const prevSerial = state.configIni.deviceSerial || '';
+          saveConfigIni({
+            deviceSerial: result.deviceSerial || '',
+          });
+          const changed = prevSerial !== (result.deviceSerial || '');
+          if (changed && state.mainWindow && !state.mainWindow.isDestroyed()) {
+            try { state.mainWindow.webContents.reloadIgnoringCache(); } catch {}
+          }
         }
       },
     },

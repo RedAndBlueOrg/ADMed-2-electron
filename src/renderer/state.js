@@ -18,6 +18,9 @@ const state = {
   clinicWsOrigin: '',
   clinicEnabled: false,
 
+  // Playlist refresh
+  needsRefresh: false,
+
   // Callback slots (break circular deps)
   onPlayNext: null,
 };

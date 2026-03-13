@@ -137,6 +137,65 @@ async function promptAdminSettings({ currentSerial = '' } = {}) {
   });
 }
 
+async function promptAdminMenu() {
+  return new Promise((resolve) => {
+    const promptWin = new BrowserWindow({
+      width: 460,
+      height: 255,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      frame: false,
+      modal: true,
+      parent: state.mainWindow || undefined,
+      show: false,
+      backgroundColor: '#f7f8fb',
+      webPreferences: { nodeIntegration: true, contextIsolation: false },
+    });
+
+    const html = `
+      <!doctype html>
+      <html><head><meta charset="UTF-8">
+      <style>
+        body { margin: 0; font-family: "Segoe UI", sans-serif; background: #f7f8fb; color: #111; }
+        .card { margin: 12px; padding: 16px 16px 12px; background: #fff; border-radius: 14px; box-shadow: 0 12px 38px rgba(0,0,0,0.14); }
+        h1 { margin: 0 0 14px 0; font-size: 18px; }
+        .menu { display: flex; flex-direction: column; gap: 8px; }
+        button { padding: 13px 16px; border: none; border-radius: 10px; font-size: 15px; cursor: pointer; text-align: left; }
+        button:hover { filter: brightness(0.95); }
+        .menu-btn { background: #4d7cff; color: #fff; }
+        .secondary { background: #e6e8ef; color: #333; margin-top: 4px; }
+      </style>
+      </head>
+      <body>
+        <div class="card">
+          <h1>관리자 메뉴</h1>
+          <div class="menu">
+            <button class="menu-btn" id="serial">시리얼번호 수정</button>
+            <button class="menu-btn" id="devtools">개발자 도구 열기</button>
+            <button class="secondary" id="cancel">닫기</button>
+          </div>
+        </div>
+        <script>
+          const { ipcRenderer } = require('electron');
+          document.getElementById('serial').addEventListener('click', () => ipcRenderer.send('prompt:admin-menu:response', 'serial'));
+          document.getElementById('devtools').addEventListener('click', () => ipcRenderer.send('prompt:admin-menu:response', 'devtools'));
+          document.getElementById('cancel').addEventListener('click', () => ipcRenderer.send('prompt:admin-menu:response', null));
+          window.addEventListener('keydown', (e) => { if (e.key === 'Escape') ipcRenderer.send('prompt:admin-menu:response', null); });
+        </script>
+      </body></html>
+    `;
+
+    ipcMain.once('prompt:admin-menu:response', (_e, val) => {
+      try { promptWin.close(); } catch {}
+      resolve(val || null);
+    });
+    promptWin.on('closed', () => resolve(null));
+    promptWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    promptWin.once('ready-to-show', () => promptWin.show());
+  });
+}
+
 async function promptError({ title, message }) {
   return new Promise((resolve) => {
     const promptWin = new BrowserWindow({
@@ -195,5 +254,6 @@ async function promptError({ title, message }) {
 module.exports = {
   promptInput,
   promptAdminSettings,
+  promptAdminMenu,
   promptError,
 };

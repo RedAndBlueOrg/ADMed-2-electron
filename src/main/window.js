@@ -57,8 +57,6 @@ function createWindow() {
   Menu.setApplicationMenu(null);
   win.loadFile(path.join(appRoot, 'index.html'));
 
-  // win.webContents.openDevTools();
-
   win.on('system-context-menu', (event) => {
     event.preventDefault();
   });

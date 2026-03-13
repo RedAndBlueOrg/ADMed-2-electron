@@ -30,17 +30,7 @@ const { startClinicSocket, stopClinicSocket } = require('./src/main/clinic-ws');
 
 // App lifecycle
 app.whenReady().then(async () => {
-  state.windowState = loadWindowState();
-  const win = createWindow();
-  createTray(win);
-
-  await setupAutoLaunch();
-
-  setupGeolocationPermission();
-  attachContextMenu(win);
-  initAutoUpdater();
-
-  // IPC handlers
+  // IPC handlers — register BEFORE creating window so renderer can use them immediately
   ipcMain.handle('playlist:prepare', async () => {
     try {
       return await preparePlaylist();
@@ -76,11 +66,6 @@ app.whenReady().then(async () => {
     return true;
   });
 
-  ipcMain.handle('context:menu', async () => {
-    const menu = buildContextMenu();
-    menu.popup({ window: win });
-  });
-
   ipcMain.handle('app:version', async () => app.getVersion());
 
   ipcMain.handle('weather:config', async () => {
@@ -93,6 +78,22 @@ app.whenReady().then(async () => {
       weatherServiceKey: process.env.WEATHER_SERVICE_KEY || '',
     };
   });
+
+  // Create window AFTER IPC handlers are ready
+  state.windowState = loadWindowState();
+  const win = createWindow();
+  createTray(win);
+
+  ipcMain.handle('context:menu', async () => {
+    const menu = buildContextMenu();
+    menu.popup({ window: win });
+  });
+
+  await setupAutoLaunch();
+
+  setupGeolocationPermission();
+  attachContextMenu(win);
+  initAutoUpdater();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
