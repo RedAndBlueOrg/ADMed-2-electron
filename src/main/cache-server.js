@@ -121,7 +121,9 @@ async function startCacheServer(cacheRoot) {
 
 function extractZip(zipPath, targetDir) {
   return new Promise((resolve, reject) => {
-    const workerPath = path.join(__dirname, '..', '..', 'extract-worker.js');
+    // asarUnpack된 경로 사용 (패키징 시 app.asar.unpacked에 위치)
+    const workerPath = path.join(__dirname, '..', '..', 'extract-worker.js')
+      .replace('app.asar', 'app.asar.unpacked');
     const child = fork(workerPath, { silent: true });
 
     child.on('message', (msg) => {

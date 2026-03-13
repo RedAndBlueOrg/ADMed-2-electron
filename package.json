@@ -36,6 +36,10 @@
     "appId": "kr.fine.admed.pc",
     "productName": "ADMed",
     "asar": true,
+    "asarUnpack": [
+      "extract-worker.js",
+      "node_modules/7zip-bin/**"
+    ],
     "files": [
       "**/*",
       "!dist/**",
