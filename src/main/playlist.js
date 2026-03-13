@@ -192,30 +192,35 @@ async function preparePlaylist() {
           const isM3u8 = headText.startsWith('#EXTM3U') || headText.startsWith('#EXT');
 
           if (isM3u8) {
+            console.log(`[hls-zip] OK (m3u8 direct): ${safeBase}`);
             fs.renameSync(zipPath, m3u8Direct);
           } else {
-            let extractOk = false;
             try {
               await extractZip(zipPath, destDir);
-              extractOk = true;
+              console.log(`[hls-zip] OK (zip extracted): ${safeBase}`);
             } catch (zipErr) {
-              console.warn(`[hls-zip] extractZip error: ${zipErr.message}`);
-              // 7-Zip은 에러가 있어도 가능한 파일은 추출함 → m3u8 있는지 확인
-              extractOk = !!findFirstManifest(destDir);
-              if (extractOk) {
-                console.log(`[hls-zip] partial extract OK, m3u8 found in ${safeBase}`);
-              }
-            }
-            // 추출 실패 + 기존 zip이었으면 → 잘린 파일이므로 삭제 후 재다운로드
-            if (!extractOk && zipExists) {
-              console.warn(`[hls-zip] corrupt zip, re-downloading: ${safeBase}.zip`);
-              try { fs.rmSync(zipPath, { force: true }); } catch {}
-              const dl = await downloadFileWithHeaders(item.url, zipPath);
-              try {
-                await extractZip(zipPath, destDir);
-              } catch (zipErr2) {
-                console.warn(`[hls-zip] re-download extract also failed: ${zipErr2.message}`);
-                extractOk = !!findFirstManifest(destDir);
+              // 7-Zip 에러여도 m3u8가 추출됐으면 부분 성공
+              if (findFirstManifest(destDir)) {
+                console.log(`[hls-zip] OK (partial extract): ${safeBase}`);
+              } else if (zipExists) {
+                // m3u8도 없고 기존 zip → 잘린 파일, 재다운로드
+                console.warn(`[hls-zip] corrupt zip, re-downloading: ${safeBase}.zip`);
+                try { fs.rmSync(zipPath, { force: true }); } catch {}
+                try { fs.rmSync(destDir, { recursive: true, force: true }); } catch {}
+                ensureDir(destDir);
+                await downloadFileWithHeaders(item.url, zipPath);
+                try {
+                  await extractZip(zipPath, destDir);
+                  console.log(`[hls-zip] OK (re-downloaded & extracted): ${safeBase}`);
+                } catch (zipErr2) {
+                  if (findFirstManifest(destDir)) {
+                    console.log(`[hls-zip] OK (re-download partial): ${safeBase}`);
+                  } else {
+                    console.warn(`[hls-zip] re-download extract failed: ${zipErr2.message}`);
+                  }
+                }
+              } else {
+                console.warn(`[hls-zip] extract failed, no m3u8: ${zipErr.message}`);
               }
             }
           }
