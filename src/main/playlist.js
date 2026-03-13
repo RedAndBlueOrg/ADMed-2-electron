@@ -149,7 +149,6 @@ async function preparePlaylist() {
       ensureDir(destDir);
       const zipPath = path.join(cacheRoot, `${safeBase}.zip`);
       const m3u8Direct = path.join(destDir, `${safeBase}.m3u8`);
-      const failMarker = path.join(cacheRoot, `${safeBase}.failed`);
       currentDownloadTitle = getItemDisplayName(item);
 
       // 캐시된 m3u8가 실제로 유효한지 검증 (이전 fallback으로 잘못 저장된 파일 제거)
@@ -170,12 +169,6 @@ async function preparePlaylist() {
 
       const alreadyCached = (fs.existsSync(zipPath) || fs.existsSync(m3u8Direct)) && !!findFirstManifest(destDir);
 
-      // 이전에 4xx로 실패한 항목은 스킵
-      if (!alreadyCached && fs.existsSync(failMarker)) {
-        markSyncDone({ currentTitle: currentDownloadTitle });
-        prepared.push({ ...item, type: 'hls', error: 'previously failed (skipped)' });
-        continue;
-      }
 
       if (!alreadyCached) {
         const zipExists = fs.existsSync(zipPath);
@@ -228,13 +221,9 @@ async function preparePlaylist() {
           }
 
           endActive();
-          try { fs.rmSync(failMarker, { force: true }); } catch {}
         } catch (err) {
           console.error(`download failed for package ${item.url}`, err);
           endActive();
-          if (err.statusCode && err.statusCode >= 400 && err.statusCode < 500) {
-            try { fs.writeFileSync(failMarker, `${err.statusCode} ${new Date().toISOString()}`); } catch {}
-          }
           markSyncDone({ currentTitle: currentDownloadTitle });
           prepared.push({ ...item, type: 'hls', error: err.message });
           continue;
@@ -253,7 +242,6 @@ async function preparePlaylist() {
 
       keepPaths.add(destDir);
       keepPaths.add(zipPath);
-      keepPaths.add(failMarker);
 
       prepared.push({
         ...item,
