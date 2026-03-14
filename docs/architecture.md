@@ -7,7 +7,7 @@
 main.js                    오케스트레이터 (~105줄): app lifecycle, IPC 핸들러 등록
 preload.js                 contextBridge: mediaAPI, clinicWS, appInfo, weatherConfig
 index.html                 UI 마크업 + <script type="module"> 진입점
-extract-worker.js          ZIP 추출 워커 (child_process.fork)
+
 
 src/main/                  Main Process 모듈 (CommonJS)
 ├── state.js               공유 상태 객체

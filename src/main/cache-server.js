@@ -3,7 +3,7 @@
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
-const { fork } = require('child_process');
+const extractZipLib = require('extract-zip');
 const state = require('./state');
 
 async function startCacheServer(cacheRoot) {
@@ -119,26 +119,8 @@ async function startCacheServer(cacheRoot) {
   return state.cacheServerBase;
 }
 
-function extractZip(zipPath, targetDir) {
-  return new Promise((resolve, reject) => {
-    // asarUnpack된 경로 사용 (패키징 시 app.asar.unpacked에 위치)
-    const workerPath = path.join(__dirname, '..', '..', 'extract-worker.js')
-      .replace('app.asar', 'app.asar.unpacked');
-    const child = fork(workerPath, { silent: true });
-
-    child.on('message', (msg) => {
-      if (msg.ok) resolve();
-      else reject(new Error(msg.error || 'extract failed'));
-    });
-
-    child.on('error', reject);
-
-    child.on('exit', (code) => {
-      if (code !== 0) reject(new Error(`extract-worker exited with code ${code}`));
-    });
-
-    child.send({ zipPath, targetDir });
-  });
+async function extractZip(zipPath, targetDir) {
+  await extractZipLib(zipPath, { dir: targetDir });
 }
 
 function findFirstManifest(dirPath) {
@@ -165,6 +147,7 @@ function cleanupCache(cacheRoot, keepPaths) {
     for (const entry of entries) {
       const fullPath = path.join(cacheRoot, entry.name);
       if (keepPaths.has(fullPath)) continue;
+      if (entry.name.endsWith('.part')) continue;
 
       try {
         if (entry.isDirectory()) {
