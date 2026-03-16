@@ -22,7 +22,7 @@ function buildFileUrl(baseUrl, img, type) {
   const url = new URL(baseUrl);
   url.searchParams.set('img', img);
   const typeLower = (type || '').toLowerCase();
-  const normalizedType = ['jpg', 'jpeg', 'png'].includes(typeLower) ? 'jpg' : typeLower || 'jpg';
+  const normalizedType = typeLower || 'jpg';
   url.searchParams.set('type', normalizedType);
   return url.toString();
 }
