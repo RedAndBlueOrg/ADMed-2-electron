@@ -23,9 +23,11 @@ export function renderNotice(shouldShow) {
     const barWidth = noticeBar.clientWidth || window.innerWidth || 1920;
     const textWidth = noticeSpan.offsetWidth || text.length * 20;
     const totalDistance = barWidth + textWidth;
-    const speed = 140; // px/sec
+    const speed = 140; // px/sec — 흐르는 속도는 글자 길이와 무관하게 일정. 길면 비례해서 더 오래 흐른다.
     let duration = totalDistance / speed;
-    duration = Math.min(40, Math.max(8, duration));
+    // 아래쪽만 클램프(아주 짧은 공지가 순식간에 지나가는 것 방지). 위쪽 캡은 두지 않는다 —
+    // 캡을 두면 긴 공지가 그 시간 안에 압축돼서 빨라져 못 읽게 됨.
+    duration = Math.max(8, duration);
     animationDuration = duration;
 
     startPosition = `${barWidth}px`;
