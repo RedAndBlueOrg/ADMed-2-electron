@@ -18,6 +18,12 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Create .env from secret
+        env:
+          ENV_FILE: ${{ secrets.ENV_FILE }}
+        shell: bash
+        run: printf '%s' "$ENV_FILE" > .env
+
       - name: Install dependencies
         run: npm install
 
