@@ -3,6 +3,11 @@ import { videoEl, imageEl, listEl, log } from './dom.js';
 
 let hlsInstance = null;
 let imageTimer = null;
+// HLS stall 감지 / 매니페스트 로딩 타임아웃 타이머. 모듈 레벨이라 destroyHls() 가 정리한다.
+// (예전엔 playIndex 호출마다 만들어지는 클로저 지역변수라 항목 교체 시 안 치워져 누적됐고,
+//  쌓인 stale 타이머가 다음 항목의 videoEl.currentTime 을 엉뚱하게 +5초 seek → 짧은 클립이 반복 재생됨)
+let hlsStallTimer = null;
+let hlsManifestTimer = null;
 
 function clearImageTimer() {
   if (imageTimer) {
@@ -11,7 +16,23 @@ function clearImageTimer() {
   }
 }
 
+function clearHlsStallTimer() {
+  if (hlsStallTimer) {
+    clearTimeout(hlsStallTimer);
+    hlsStallTimer = null;
+  }
+}
+
+function clearHlsManifestTimer() {
+  if (hlsManifestTimer) {
+    clearTimeout(hlsManifestTimer);
+    hlsManifestTimer = null;
+  }
+}
+
 function destroyHls() {
+  clearHlsStallTimer();
+  clearHlsManifestTimer();
   if (hlsInstance) {
     hlsInstance.destroy();
     hlsInstance = null;
@@ -101,7 +122,7 @@ export function playIndex(idx) {
       hlsInstance.attachMedia(videoEl);
       videoEl.autoplay = true;
       let manifestLoaded = false;
-      const manifestTimeout = setTimeout(() => {
+      hlsManifestTimer = setTimeout(() => {
         if (!manifestLoaded && hlsInstance) {
           log(`HLS manifest timeout (15s): ${title}, skipping`);
           destroyHls();
@@ -111,19 +132,15 @@ export function playIndex(idx) {
 
       hlsInstance.on(window.Hls.Events.MANIFEST_PARSED, () => {
         manifestLoaded = true;
-        clearTimeout(manifestTimeout);
+        clearHlsManifestTimer();
         log(`HLS manifest loaded: ${title}`);
         videoEl.play().catch((err) => log(`Playback error (HLS): ${err.message}`));
       });
 
-      // Stall detection
+      // Stall detection — 타이머 핸들은 모듈 레벨(hlsStallTimer). destroyHls() 가 정리하므로
+      // 항목 교체 시 이전 항목의 검사 루프가 새 항목에 끼어들지 않는다.
       let lastTime = -1;
       let stallCount = 0;
-      let stalledTimer = null;
-
-      function clearStalledTimer() {
-        if (stalledTimer) { clearTimeout(stalledTimer); stalledTimer = null; }
-      }
 
       function checkStalled() {
         if (!hlsInstance || !videoEl || videoEl.paused || videoEl.ended) return;
@@ -136,7 +153,6 @@ export function playIndex(idx) {
             videoEl.play().catch(() => {});
           } else {
             log('HLS stall persists after seek, skipping to next content');
-            clearStalledTimer();
             destroyHls();
             callPlayNext();
             return;
@@ -145,11 +161,10 @@ export function playIndex(idx) {
           stallCount = 0;
         }
         lastTime = videoEl.currentTime;
-        stalledTimer = setTimeout(checkStalled, 3000);
+        hlsStallTimer = setTimeout(checkStalled, 3000);
       }
 
-      stalledTimer = setTimeout(checkStalled, 3000);
-      videoEl.addEventListener('ended', clearStalledTimer, { once: true });
+      hlsStallTimer = setTimeout(checkStalled, 3000);
 
       hlsInstance.on(window.Hls.Events.ERROR, (_, data) => {
         log(`HLS error [${data.type}/${data.details}]`);
@@ -171,7 +186,6 @@ export function playIndex(idx) {
             break;
           default:
             log('HLS fatal error, skipping to next content');
-            clearStalledTimer();
             destroyHls();
             callPlayNext();
             break;
