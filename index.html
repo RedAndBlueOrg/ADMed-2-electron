@@ -9,6 +9,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ADMed</title>
     <style>
+      @font-face {
+        font-family: "SCDream";
+        src: url("assets/fonts/SCDream4.otf") format("opentype");
+        font-weight: 400;
+        font-display: block;
+      }
+      @font-face {
+        font-family: "SCDream";
+        src: url("assets/fonts/SCDream5.otf") format("opentype");
+        font-weight: 500;
+        font-display: block;
+      }
+      @font-face {
+        font-family: "SCDream";
+        src: url("assets/fonts/SCDream6.otf") format("opentype");
+        font-weight: 600;
+        font-display: block;
+      }
+      @font-face {
+        font-family: "SCDream";
+        src: url("assets/fonts/SCDream7.otf") format("opentype");
+        font-weight: 700;
+        font-display: block;
+      }
+      @font-face {
+        font-family: "SCDream";
+        src: url("assets/fonts/SCDream8.otf") format("opentype");
+        font-weight: 800;
+        font-display: block;
+      }
       :root {
         --notice-h: 10; /* vh */
         --panel-w: 10;  /* % */
@@ -18,7 +48,7 @@
         margin: 0;
         background: #000;
         color: #eaeaea;
-        font-family: "Segoe UI", sans-serif;
+        font-family: "SCDream", "Segoe UI", sans-serif;
         font-size: clamp(14px, calc(16px * var(--ui-scale)), 22px);
         display: flex;
         flex-direction: column;
@@ -61,7 +91,7 @@
         box-sizing: border-box;
         gap: 0;
         border-right: none;
-        font-family: "Segoe UI", sans-serif;
+        font-family: "SCDream", "Segoe UI", sans-serif;
         height: 100%;
       }
       #waiting-panel .title {
@@ -256,17 +286,30 @@
         padding: clamp(14px, calc(18px * var(--ui-scale)), 26px) clamp(12px, calc(16px * var(--ui-scale)), 20px);
         box-sizing: border-box;
         border-left: none;
-        font-family: "Segoe UI", sans-serif;
+        font-family: "SCDream", "Segoe UI", sans-serif;
       }
       #weather-panel .title {
         font-size: clamp(22px, calc(28px * var(--ui-scale)), 40px);
         font-weight: 700;
-        margin-bottom: 8px;
+        margin-top: 8px;
+        margin-bottom: 14px;
+      }
+      #weather-panel .title .weekday {
+        font-weight: 600;
       }
       #weather-panel .meta {
         font-size: clamp(26px, calc(32px * var(--ui-scale)), 48px);
+        font-weight: 600;
+        letter-spacing: -0.5px;
         opacity: 0.9;
         margin-bottom: 24px;
+      }
+      #weather-panel .meta .ampm {
+        font-size: 0.6em;
+        font-weight: 500;
+        opacity: 0.75;
+        margin-right: 0.2em;
+        vertical-align: 0.1em;
       }
       #weather-panel .content {
         flex: 1;
@@ -393,7 +436,7 @@
       #landing-message {
         padding: 14px 18px;
         font-size: 18px;
-        font-family: "Segoe UI", sans-serif;
+        font-family: "SCDream", "Segoe UI", sans-serif;
         opacity: 0.9;
         background: rgba(20, 24, 35, 0.8);
         border-bottom: 1px solid rgba(255, 255, 255, 0.05);
@@ -445,7 +488,7 @@
       .moving-text-span {
         font-size: clamp(32px, calc(48px * var(--ui-scale)), 72px);
         font-weight: 700;
-        font-family: "Segoe UI", sans-serif;
+        font-family: "SCDream", "Segoe UI", sans-serif;
         letter-spacing: 0.5px;
         line-height: 1.2;
         display: block;

@@ -9,6 +9,22 @@ let lastWeatherInfo = null;
 let weatherClockTimer = null;
 let weatherClockTimeout = null;
 
+const dateFormatter = new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' });
+
+function formatDateHtml(now) {
+  return dateFormatter.formatToParts(now)
+    .map((p) => p.type === 'weekday' ? `<span class="weekday">${p.value}</span>` : p.value)
+    .join('');
+}
+
+function formatTimeHtml(now) {
+  const h24 = now.getHours();
+  const ampm = h24 < 12 ? '오전' : '오후';
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  return `<span class="ampm">${ampm}</span>${h12}:${mm}`;
+}
+
 function shouldFetchWeatherNow() {
   if (!weatherReady) return true;
   if (!lastWeatherFetch) return true;
@@ -84,13 +100,10 @@ function renderWeather(info) {
   `;
   const now = new Date();
   if (weatherTitle) {
-    const dateStr = now.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
-    weatherTitle.textContent = dateStr;
+    weatherTitle.innerHTML = formatDateHtml(now);
   }
   if (weatherMeta) {
-    const hh = String(now.getHours()).padStart(2, '0');
-    const mm = String(now.getMinutes()).padStart(2, '0');
-    weatherMeta.textContent = `${hh}:${mm}`;
+    weatherMeta.innerHTML = formatTimeHtml(now);
   }
   lastWeatherInfo = info;
 }
@@ -240,15 +253,8 @@ export function startWeatherClock() {
 
   const tick = () => {
     const now = new Date();
-    if (weatherTitle) {
-      const dateStr = now.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
-      weatherTitle.textContent = dateStr;
-    }
-    if (weatherMeta) {
-      const hh = String(now.getHours()).padStart(2, '0');
-      const mm = String(now.getMinutes()).padStart(2, '0');
-      weatherMeta.textContent = `${hh}:${mm}`;
-    }
+    if (weatherTitle) weatherTitle.innerHTML = formatDateHtml(now);
+    if (weatherMeta) weatherMeta.innerHTML = formatTimeHtml(now);
   };
 
   const scheduleNext = () => {

@@ -50,3 +50,20 @@
 - 배포: `v2.1.5` 태그 푸시 → GitHub Actions(`.github/workflows/release.yml`) → windows-latest 러너 → `npm run dist -- --publish always` → GitHub Releases (`ADMed-2.1.5-Setup.exe` + `latest.yml`) → 현장 `electron-updater` 자동 다운로드/설치.
 - 운영 안전망: 태그 푸시 후 CI 빌드 끝나면 Release 를 **일단 pre-release 로 마크** → Windows 한 대 수동 설치 검증 → OK 면 pre-release 해제(이때부터 현장 auto-update 잡힘). 문제 시 Release 삭제 → 현장 그대로 2.1.4 유지.
 - 다음 단계: 현장 배포 후 1~2주 모니터링. 재발 없으면 incident-log 2026-05-13 항목을 ✅(해결) 로 격상.
+
+## 2026-05-14 2.1.8: SCDream 폰트 적용 + 날씨 패널 날짜·시간 표시 개선
+
+- 변경:
+  - `assets/fonts/` 신규: SCDream 4~8 (5종, .otf). `index.html` 에 `@font-face` 5개(font-weight 400/500/600/700/800) 등록 + 기존 `font-family: "Segoe UI"` 5곳을 `"SCDream", "Segoe UI", sans-serif` 로 교체 (fallback Segoe UI 유지).
+  - `src/renderer/weather.js`: 날짜 표시에 요일 추가(`5월 14일 목요일`), 시간 12시간제 + 오전/오후 (`오후 2:05`). `Intl.DateTimeFormat.formatToParts()` 로 요일만 `<span class="weekday">`, 오전/오후를 `<span class="ampm">` 으로 분리.
+  - `index.html` CSS: `.title .weekday` font-weight 600 (본체 700 보다 한 단계 가벼움), `.meta .ampm` 0.6em + opacity 0.75 (시간 숫자 대비 보조 표시), `.title` margin top 8px / bottom 14px (가독성).
+- 동기: 사용자 요청 — 폰트 통일 (다른 프로젝트 `admed_v2.0/device-front` 에서 SCDream 가져옴) + 날씨 패널 위쪽 시계 영역 가독성/디자인 개선 (24시간제 → 12시간제, 요일 표시 추가).
+- 영향 범위: renderer 정적 자산(폰트 5개), `index.html` CSS + 마크업, `src/renderer/weather.js`. main 프로세스/IPC 변경 없음. `build.files: ["**/*"]` 라 `assets/` 자동 포함, electron-builder 설정 수정 불필요.
+- 검증: `node --input-type=module --check < src/renderer/weather.js` OK. macOS 에서 `npm start` 로 화면 확인 — 폰트 적용/요일 출력/12시간제 시간/오전·오후 보조 표시/여백 모두 정상.
+- 사고 (별개): 이번 작업 도중 `.env` 없이 첫 실행했더니 `playlist.js:70-73` 의 시나리오 fetch 실패 폴백 (`playlist = []`) → `cleanupCache(cacheRoot, [])` 가 캐시를 통째로 삭제 (~13.5GB → 321MB). 워크트리에 `.env` 심볼릭 링크로 복구 후 재다운로드 정상. 후속 안전망 개선 후보: API 실패 시 cleanupCache 스킵.
+
+## 2026-05-14 2.1.8 릴리스
+
+- 변경: 위 SCDream 폰트 + 날씨 패널 날짜·시간 표시 개선 묶어 patch 릴리스. `package.json` 2.1.7 → 2.1.8.
+- 배포: `v2.1.8` 태그 푸시 → GitHub Actions → GitHub Releases (`ADMed-2.1.8-Setup.exe` + `latest.yml`) → 현장 `electron-updater` 자동 다운로드/설치.
+- 운영 안전망: 태그 푸시 후 CI 빌드 끝나면 Release 를 **일단 pre-release 로 마크** → Windows 한 대 수동 설치 검증 (폰트 로딩, 시계 표시 확인) → OK 면 pre-release 해제. 문제 시 Release 삭제 → 현장 그대로 2.1.7 유지.
