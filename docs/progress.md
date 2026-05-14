@@ -67,3 +67,18 @@
 - 변경: 위 SCDream 폰트 + 날씨 패널 날짜·시간 표시 개선 묶어 patch 릴리스. `package.json` 2.1.7 → 2.1.8.
 - 배포: `v2.1.8` 태그 푸시 → GitHub Actions → GitHub Releases (`ADMed-2.1.8-Setup.exe` + `latest.yml`) → 현장 `electron-updater` 자동 다운로드/설치.
 - 운영 안전망: 태그 푸시 후 CI 빌드 끝나면 Release 를 **일단 pre-release 로 마크** → Windows 한 대 수동 설치 검증 (폰트 로딩, 시계 표시 확인) → OK 면 pre-release 해제. 문제 시 Release 삭제 → 현장 그대로 2.1.7 유지.
+
+## 2026-05-14 2.1.8 CI 빌드 실패 + 2.1.9 hotfix
+
+- 사고: v2.1.8 태그 푸시 후 GitHub Actions 빌드 실패. 원인 2가지가 겹침:
+  1. `keytar` 7.9 의 `prebuild-install` 이 Request timeout → fallback 으로 `node-gyp rebuild`
+  2. `windows-latest` runner 의 Python 이 3.12 로 올라가 있는데 stdlib `distutils` 가 3.12 부터 제거됨 → node-gyp(9.4.1) 가 `ModuleNotFoundError: No module named 'distutils'` 로 실패
+- 영향: v2.1.8 Release publish 실패 → v2.1.7 이 Latest 그대로 유지, **현장 자동 업데이트 영향 없음**.
+- 수정: `.github/workflows/release.yml` 에 `actions/setup-python@v5` (Python 3.11) 스텝 추가. node-gyp fallback 경로에서 distutils 살아있음. prebuild 가 정상 다운로드되면 애초에 fallback 안 가지만, 안전망으로 두 경로 다 통과하도록.
+- 버전 처리: v2.1.8 태그는 GitHub 에 남아있지만 Release 없음. 태그 force-push 대신 안전하게 2.1.9 로 한 단계 bump (force-push 회피).
+
+## 2026-05-14 2.1.9 릴리스
+
+- 변경: 2.1.8 의 코드 변경(SCDream 폰트 + 날씨 패널 날짜·시간) + CI workflow Python 3.11 명시. 코드 변경은 2.1.8 과 동일.
+- 배포: `v2.1.9` 태그 푸시 → GitHub Actions → GitHub Releases (`ADMed-2.1.9-Setup.exe` + `latest.yml`).
+- 운영 안전망: 동일 — pre-release 마크 → Windows 수동 설치 검증 → 해제.

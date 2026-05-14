@@ -18,6 +18,14 @@ jobs:
           node-version: 20
           cache: npm
 
+      # windows-latest 가 Python 3.12 로 올라가면서 distutils 가 stdlib 에서 제거됨.
+      # keytar prebuild-install 이 timeout 으로 실패하면 node-gyp fallback 인데
+      # 3.12 에선 distutils 못 찾아 빌드 깨짐 → Python 3.11 명시.
+      - name: Setup Python (node-gyp용)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Create .env from secret
         env:
           ENV_FILE: ${{ secrets.ENV_FILE }}
