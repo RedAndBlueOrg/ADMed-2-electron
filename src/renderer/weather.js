@@ -141,6 +141,8 @@ function fetchWeather(lat, lon) {
   const baseHH = `${baseHour}`.padStart(2, '0');
   const queryUrl = `${url}?serviceKey=${serviceKey}&pageNo=1&numOfRows=60&dataType=json&base_date=${dateYYYYMMDD}&base_time=${baseHH}${baseMin}&nx=${nx}&ny=${ny}`;
 
+  const maskedKey = serviceKey.length > 8 ? `${serviceKey.slice(0, 4)}…${serviceKey.slice(-4)}` : '***';
+  console.info(`[weather] fetch base=${dateYYYYMMDD} ${baseHH}${baseMin} nx=${nx} ny=${ny} key=${maskedKey}`);
   fetch(queryUrl)
     .then(async (res) => {
       if (!res.ok) {
@@ -151,13 +153,21 @@ function fetchWeather(lat, lon) {
       try {
         data = JSON.parse(text);
       } catch {
+        console.warn('[weather] non-JSON response (first 200 chars):', text.slice(0, 200));
         throw new Error('API 응답을 해석할 수 없습니다');
+      }
+      const resultCode = data?.response?.header?.resultCode;
+      const resultMsg = data?.response?.header?.resultMsg;
+      if (resultCode && resultCode !== '00') {
+        console.warn(`[weather] API resultCode=${resultCode} resultMsg=${resultMsg}`);
       }
       const items = data?.response?.body?.items?.item || [];
       if (!items.length) {
+        console.warn('[weather] empty items, response snippet:', JSON.stringify(data).slice(0, 300));
         if (weatherContent) weatherContent.textContent = '';
         return;
       }
+      console.info(`[weather] got ${items.length} items, categories:`, [...new Set(items.map((it) => it.category))].join(','));
 
       const sorted = items
         .map((it) => ({ ...it, fcstTimeStr: String(it.fcstTime).padStart(4, '0') }))
@@ -179,7 +189,8 @@ function fetchWeather(lat, lon) {
       lastWeatherFetch = Date.now();
       weatherReady = true;
     })
-    .catch(() => {
+    .catch((err) => {
+      console.warn('[weather] fetch failed:', err.message);
       if (weatherContent) weatherContent.textContent = '';
     });
 }
@@ -187,7 +198,8 @@ function fetchWeather(lat, lon) {
 function useConfigWeather() {
   // 에러 메시지는 표시 안 함 — 좌표 없으면 weather 영역 빈 채로 둠.
   if (cachedWeatherConfig) {
-    const { lat, lon } = cachedWeatherConfig;
+    const { lat, lon, key } = cachedWeatherConfig;
+    console.info(`[weather] config seed lat=${lat} lon=${lon} hasKey=${!!key}`);
     if (lat && lon) {
       fetchWeather(lat, lon);
       return;
@@ -202,13 +214,15 @@ function useConfigWeather() {
         url: cfg?.weatherServiceUrl || null,
         key: cfg?.weatherServiceKey || null,
       };
+      console.info(`[weather] IPC config lat=${cfg?.lat} lon=${cfg?.lon} hasKey=${!!cfg?.weatherServiceKey}`);
       if (cfg?.lat && cfg?.lon) {
         fetchWeather(cfg.lat, cfg.lon);
       } else if (weatherContent) {
         weatherContent.textContent = '';
       }
     })
-    .catch(() => {
+    .catch((err) => {
+      console.warn('[weather] getWeatherConfig IPC failed:', err.message);
       if (weatherContent) weatherContent.textContent = '';
     });
 }
@@ -237,8 +251,9 @@ function startWeather() {
     fetchWeather(pos.coords.latitude, pos.coords.longitude);
     if (weatherTimer) clearInterval(weatherTimer);
   };
-  const onError = () => {
+  const onError = (err) => {
     // geolocation 실패 — 에러 메시지 표시 안 함, 바로 IP fallback 시도
+    console.warn(`[weather] geolocation failed code=${err.code} msg=${err.message}`);
     useConfigWeather();
     fallbackIpLocation();
   };
