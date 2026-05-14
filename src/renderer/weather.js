@@ -9,21 +9,6 @@ let lastWeatherInfo = null;
 let weatherClockTimer = null;
 let weatherClockTimeout = null;
 
-// Seed config from preload (runs at module evaluation)
-try {
-  if (window.weatherConfig && typeof window.weatherConfig.get === 'function') {
-    const cfg = window.weatherConfig.get();
-    cachedWeatherConfig = {
-      lat: cfg?.lat || null,
-      lon: cfg?.lon || null,
-      url: cfg?.weatherServiceUrl || null,
-      key: cfg?.weatherServiceKey || null,
-    };
-  }
-} catch (err) {
-  console.warn('[weather] preload config seed failed:', err.message);
-}
-
 function shouldFetchWeatherNow() {
   if (!weatherReady) return true;
   if (!lastWeatherFetch) return true;
@@ -195,28 +180,19 @@ function fetchWeather(lat, lon) {
     });
 }
 
-function useConfigWeather() {
-  // 에러 메시지는 표시 안 함 — 좌표 없으면 weather 영역 빈 채로 둠.
-  if (cachedWeatherConfig) {
-    const { lat, lon, key } = cachedWeatherConfig;
-    console.info(`[weather] config seed lat=${lat} lon=${lon} hasKey=${!!key}`);
-    if (lat && lon) {
-      fetchWeather(lat, lon);
-      return;
-    }
-  }
-  window.mediaAPI
+function loadConfigAndFetch() {
+  return window.mediaAPI
     .getWeatherConfig()
     .then((cfg) => {
       cachedWeatherConfig = {
-        lat: cfg?.lat || null,
-        lon: cfg?.lon || null,
+        lat: Number.isFinite(cfg?.lat) ? cfg.lat : null,
+        lon: Number.isFinite(cfg?.lon) ? cfg.lon : null,
         url: cfg?.weatherServiceUrl || null,
         key: cfg?.weatherServiceKey || null,
       };
-      console.info(`[weather] IPC config lat=${cfg?.lat} lon=${cfg?.lon} hasKey=${!!cfg?.weatherServiceKey}`);
-      if (cfg?.lat && cfg?.lon) {
-        fetchWeather(cfg.lat, cfg.lon);
+      console.info(`[weather] config lat=${cachedWeatherConfig.lat} lon=${cachedWeatherConfig.lon} hasKey=${!!cachedWeatherConfig.key} label="${cfg?.locationLabel || ''}"`);
+      if (cachedWeatherConfig.lat && cachedWeatherConfig.lon) {
+        fetchWeather(cachedWeatherConfig.lat, cachedWeatherConfig.lon);
       } else if (weatherContent) {
         weatherContent.textContent = '';
       }
@@ -227,37 +203,15 @@ function useConfigWeather() {
     });
 }
 
-function fallbackIpLocation() {
-  fetch('https://ipapi.co/json/')
-    .then((res) => res.json())
-    .then((data) => {
-      if (data && data.latitude && data.longitude) {
-        fetchWeather(data.latitude, data.longitude);
-      }
-    })
-    .catch(() => {});
-}
-
-function startWeather() {
-  if (!shouldFetchWeatherNow()) return;
-  useConfigWeather();
-
-  if (!navigator.geolocation) {
-    if (weatherContent) weatherContent.textContent = '';
-    return;
-  }
-
-  const onSuccess = (pos) => {
-    fetchWeather(pos.coords.latitude, pos.coords.longitude);
-    if (weatherTimer) clearInterval(weatherTimer);
-  };
-  const onError = (err) => {
-    // geolocation 실패 — 에러 메시지 표시 안 함, 바로 IP fallback 시도
-    console.warn(`[weather] geolocation failed code=${err.code} msg=${err.message}`);
-    useConfigWeather();
-    fallbackIpLocation();
-  };
-  navigator.geolocation.getCurrentPosition(onSuccess, onError, { enableHighAccuracy: true, timeout: 5000 });
+// 메인 프로세스가 위치를 새로 감지/저장하면 알려줌 → 캐시 무효화 후 즉시 재조회.
+if (window.mediaAPI && typeof window.mediaAPI.onWeatherConfigChanged === 'function') {
+  window.mediaAPI.onWeatherConfigChanged(() => {
+    console.info('[weather] config changed event — refetching');
+    cachedWeatherConfig = null;
+    weatherReady = false;
+    lastWeatherFetch = null;
+    loadConfigAndFetch();
+  });
 }
 
 export function updateWeatherPanel() {
@@ -272,7 +226,7 @@ export function updateWeatherPanel() {
       renderWeather(lastWeatherInfo);
     }
     if (!weatherReady || shouldFetchWeatherNow()) {
-      startWeather();
+      loadConfigAndFetch();
     }
   } else {
     if (weatherTimer) clearInterval(weatherTimer);

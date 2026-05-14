@@ -5,6 +5,11 @@ contextBridge.exposeInMainWorld('mediaAPI', {
   fetchNotices: () => ipcRenderer.invoke('notice:fetch'),
   showContextMenu: () => ipcRenderer.invoke('context:menu'),
   getWeatherConfig: () => ipcRenderer.invoke('weather:config'),
+  onWeatherConfigChanged: (handler) => {
+    const listener = () => handler();
+    ipcRenderer.on('weather:config-changed', listener);
+    return () => ipcRenderer.removeListener('weather:config-changed', listener);
+  },
   onDownloadProgress: (handler) => {
     const listener = (_event, payload) => handler(payload);
     ipcRenderer.on('download:progress', listener);
@@ -14,17 +19,6 @@ contextBridge.exposeInMainWorld('mediaAPI', {
 
 contextBridge.exposeInMainWorld('appInfo', {
   getVersion: () => ipcRenderer.invoke('app:version'),
-});
-
-contextBridge.exposeInMainWorld('weatherConfig', {
-  get: () => ({
-    lat: process.env.WEATHER_LAT ? Number(process.env.WEATHER_LAT) : null,
-    lon: process.env.WEATHER_LON ? Number(process.env.WEATHER_LON) : null,
-    weatherServiceUrl:
-      process.env.WEATHER_SERVICE_URL ||
-      'https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst',
-    weatherServiceKey: process.env.WEATHER_SERVICE_KEY || '',
-  }),
 });
 
 contextBridge.exposeInMainWorld('clinicWS', {

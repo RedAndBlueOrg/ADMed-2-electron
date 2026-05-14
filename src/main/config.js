@@ -60,18 +60,27 @@ function loadEnvFiles() {
   }
 }
 
+function toFiniteOrNull(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 function loadConfigIni() {
   const { CONFIG_INI_PATH } = appPaths();
-  if (!fs.existsSync(CONFIG_INI_PATH)) return { deviceSerial: '' };
+  const empty = { deviceSerial: '', lat: null, lon: null, locationLabel: '' };
+  if (!fs.existsSync(CONFIG_INI_PATH)) return empty;
   try {
     const parsed = ini.parse(fs.readFileSync(CONFIG_INI_PATH, 'utf-8'));
     const ws = parsed.ADMed || {};
     return {
       deviceSerial: ws.device_serial || ws.deviceSerial || '',
+      lat: toFiniteOrNull(ws.weather_lat),
+      lon: toFiniteOrNull(ws.weather_lon),
+      locationLabel: ws.weather_label || '',
     };
   } catch (err) {
     console.warn('config.ini load failed:', err.message);
-    return { deviceSerial: '' };
+    return empty;
   }
 }
 
@@ -83,6 +92,13 @@ function saveConfigIni(next = {}) {
       device_serial: state.configIni.deviceSerial || '',
     },
   };
+  if (Number.isFinite(state.configIni.lat) && Number.isFinite(state.configIni.lon)) {
+    data.ADMed.weather_lat = state.configIni.lat;
+    data.ADMed.weather_lon = state.configIni.lon;
+  }
+  if (state.configIni.locationLabel) {
+    data.ADMed.weather_label = state.configIni.locationLabel;
+  }
   try {
     fs.writeFileSync(CONFIG_INI_PATH, ini.stringify(data));
   } catch (err) {

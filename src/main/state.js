@@ -15,7 +15,7 @@ module.exports = {
   alwaysOnTop: false,
   isFullscreen: false,
   autoLaunchEnabled: false,
-  configIni: { deviceSerial: '' },
+  configIni: { deviceSerial: '', lat: null, lon: null, locationLabel: '' },
   clinicWsConfig: null,
   stompClient: null,
 };

@@ -5,7 +5,7 @@ const state = require('./state');
 const { ADMIN_PASSWORD, saveConfigIni } = require('./config');
 const { captureWindowState, scheduleSaveWindowState } = require('./window-state');
 const { setAutoLaunch, isAutoLaunchEnabled } = require('./auto-launch');
-const { promptInput, promptAdminSettings, promptAdminMenu, promptError } = require('./dialogs');
+const { promptInput, promptAdminSettings, promptAdminMenu, promptError, promptLocationSettings } = require('./dialogs');
 
 function setWindowSize(width, height) {
   if (!state.mainWindow || state.mainWindow.isDestroyed()) return;
@@ -132,6 +132,19 @@ function buildContextMenu() {
           });
           const changed = prevSerial !== (result.deviceSerial || '');
           if (changed && state.mainWindow && !state.mainWindow.isDestroyed()) {
+            try { state.mainWindow.webContents.reloadIgnoringCache(); } catch {}
+          }
+        }
+
+        if (choice === 'location') {
+          const result = await promptLocationSettings({
+            currentLat: state.configIni.lat,
+            currentLon: state.configIni.lon,
+            currentLabel: state.configIni.locationLabel || '',
+          });
+          if (!result) return;
+          saveConfigIni({ lat: result.lat, lon: result.lon, locationLabel: result.label || '' });
+          if (state.mainWindow && !state.mainWindow.isDestroyed()) {
             try { state.mainWindow.webContents.reloadIgnoringCache(); } catch {}
           }
         }
