@@ -118,7 +118,7 @@ function fetchWeather(lat, lon) {
   const serviceKey = cachedWeatherConfig && cachedWeatherConfig.key;
   if (!serviceKey) {
     console.warn('[weather] WEATHER_SERVICE_KEY is missing');
-    if (weatherContent) weatherContent.textContent = '날씨 정보를 불러올 수 없습니다.';
+    if (weatherContent) weatherContent.textContent = '';
     return;
   }
   const { nx, ny } = mapToGrid(lat, lon);
@@ -155,7 +155,7 @@ function fetchWeather(lat, lon) {
       }
       const items = data?.response?.body?.items?.item || [];
       if (!items.length) {
-        if (weatherContent) weatherContent.textContent = '날씨 정보를 불러오지 못했습니다.';
+        if (weatherContent) weatherContent.textContent = '';
         return;
       }
 
@@ -179,13 +179,13 @@ function fetchWeather(lat, lon) {
       lastWeatherFetch = Date.now();
       weatherReady = true;
     })
-    .catch((err) => {
-      if (weatherContent) weatherContent.textContent = `날씨 불러오기 실패: ${err.message}`;
+    .catch(() => {
+      if (weatherContent) weatherContent.textContent = '';
     });
 }
 
-function useConfigWeather(fallbackMsg) {
-  if (weatherContent && fallbackMsg) weatherContent.textContent = fallbackMsg;
+function useConfigWeather() {
+  // 에러 메시지는 표시 안 함 — 좌표 없으면 weather 영역 빈 채로 둠.
   if (cachedWeatherConfig) {
     const { lat, lon } = cachedWeatherConfig;
     if (lat && lon) {
@@ -205,11 +205,11 @@ function useConfigWeather(fallbackMsg) {
       if (cfg?.lat && cfg?.lon) {
         fetchWeather(cfg.lat, cfg.lon);
       } else if (weatherContent) {
-        weatherContent.textContent = fallbackMsg || '위치 정보를 설정하거나 허용해 주세요.';
+        weatherContent.textContent = '';
       }
     })
     .catch(() => {
-      if (weatherContent) weatherContent.textContent = fallbackMsg || '위치 정보를 설정하거나 허용해 주세요.';
+      if (weatherContent) weatherContent.textContent = '';
     });
 }
 
@@ -229,7 +229,7 @@ function startWeather() {
   useConfigWeather();
 
   if (!navigator.geolocation) {
-    if (weatherContent) weatherContent.textContent = '위치 정보를 설정하거나 허용해 주세요.';
+    if (weatherContent) weatherContent.textContent = '';
     return;
   }
 
@@ -237,8 +237,9 @@ function startWeather() {
     fetchWeather(pos.coords.latitude, pos.coords.longitude);
     if (weatherTimer) clearInterval(weatherTimer);
   };
-  const onError = (err) => {
-    useConfigWeather(`위치 접근 불가: ${err.message}`);
+  const onError = () => {
+    // geolocation 실패 — 에러 메시지 표시 안 함, 바로 IP fallback 시도
+    useConfigWeather();
     fallbackIpLocation();
   };
   navigator.geolocation.getCurrentPosition(onSuccess, onError, { enableHighAccuracy: true, timeout: 5000 });
