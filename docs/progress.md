@@ -82,3 +82,15 @@
 - 변경: 2.1.8 의 코드 변경(SCDream 폰트 + 날씨 패널 날짜·시간) + CI workflow Python 3.11 명시. 코드 변경은 2.1.8 과 동일.
 - 배포: `v2.1.9` 태그 푸시 → GitHub Actions → GitHub Releases (`ADMed-2.1.9-Setup.exe` + `latest.yml`).
 - 운영 안전망: 동일 — pre-release 마크 → Windows 수동 설치 검증 → 해제.
+
+## 2026-05-15 HLS "2~3초 무한 반복" 진짜 원인 발견 + Fix A+B (`src/renderer/media.js`)
+
+- 동기: 2.1.5 자동 업데이트 받은 현장에서도 사용자 보고 — 영상 시작 시 같은 영상이 처음부터 무한 반복. 사용자 가설 "윈도우 부팅 직후라 값을 못 가져와서?" 가 정확히 트리거 조건이었음.
+- 진단: Mac 로컬에서 `cache-server.js` 의 첫 .ts 응답에 인공 5초 delay 를 임시 추가해 Windows cold disk IO 시뮬레이션 → 콘솔 로그로 두 버그가 합쳐진 무한 루프 정확히 재현. ① **stall checker false-positive**: `manifest_loaded → play()` 직후 첫 segment 가 cold disk 로 늦게 오는 동안 currentTime=0 → 6초 시점 stall 판정 → `+5초 seek` → 5초 위치 buffer 없음 → 또 stall → 3회 누적 → skip. ② **currentTime 전염**: yank 된 ct=10 이 `resetMedia()` + `hls.attachMedia` 후에도 일부 경로에서 리셋되지 않아 다음 항목이 ct=10 부터 시작 → 짧은 영상이면 즉시 ended → cycle 끝 → 첫 영상 → 반복. 2.1.5 fix(stale 타이머)는 부분 원인만 잡았던 것. 진단 후 임시 코드(5s delay / 500ms threshold / diag 로그) 전부 원복.
+- 변경:
+  - **Fix A** — stall checker arm 을 첫 `playing` 이벤트 후로 미룸. `AbortController + {once: true, signal}` 로 등록하여 `destroyHls()` 가 `abort()` 호출로 정리. manifest_loaded 직후 buffer 채우는 cold-disk 윈도우의 false-positive 원천 차단.
+  - **Fix B** — `resetMedia()` 에 `videoEl.currentTime = 0` 명시 + `hls.js` config 에 `startPosition: 0` 추가. yank 된 currentTime 이 다음 항목으로 전염되지 않게 이중 안전망.
+- 검증: `node --input-type=module --check < src/renderer/media.js` OK. Mac 로컬에서 인공 delay 재현으로 fix 검증 가능 (별도 시도). **Windows pre-release 수동 검증 필수** (운영 중 코드, 회귀 절대 금지).
+- 영향 범위: renderer `media.js` 1파일. IPC/preload/main 변경 없음. 회귀 risk 낮음 — Fix A 는 진짜 stall (영상 시작 후 buffer underrun) 시엔 그대로 동작, Fix B 는 새 항목 시작 시점에만 currentTime=0 set.
+- 추가 변경 (같은 commit): `index.html` video element 의 background 에 ADMed 로고 표시 (영상 buffering 동안만 보이고 frame 그려지면 자동 가려짐). `.move-handle` 의 background-image 를 SVG inline 으로 교체 (binary 의존 제거). `images/logo_full.png` 가 이전 `.gitattributes` 의 `* text eol=lf` 룰로 LF 변환되어 PNG 시그니처(`0D 0A`) 손상돼 있던 것을 정상 복원 (1 byte 차이). `images/move_icon.png` 도 같은 손상 + 사용처 SVG 대체로 삭제. `.gitattributes` 를 `* text=auto eol=lf` + binary 명시 룰(*.png, *.otf 등) 로 재작성, 미래 binary 손상 차단.
+- 다음 단계: tester / reviewer 위임 완료 (둘 다 PASS, P0 차단 0건). Mac 로컬 인공 delay 재현으로 fix 검증 완료 — `HLS stall #N` 로그 0건. 패치 릴리스 v2.1.10 (v2.1.9 base) → 운영 안전망 패턴(pre-release 마크 → Windows 1대 수동 검증 → OK 면 해제). incident-log 2026-05-13 항목은 현장 재발 안 확인되면 ✅ 격상.

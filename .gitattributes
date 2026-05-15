@@ -1,14 +1,26 @@
-* text eol=lf
+# 텍스트 파일은 자동 감지 + LF 정규화. binary 는 아래 명시 룰이 우선.
+* text=auto eol=lf
 
-# 폰트 / 이미지 등 바이너리 — EOL 변환 금지
-*.otf binary
-*.ttf binary
-*.woff binary
-*.woff2 binary
-*.png binary
-*.jpg binary
-*.jpeg binary
-*.gif binary
-*.ico binary
-*.pdf binary
-*.zip binary
+# Binary — autocrlf/eol 영향 차단 (이전에 PNG 시그니처가 LF 변환으로 손상된 적 있음)
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.webp   binary
+*.ico    binary
+*.icns   binary
+*.zip    binary
+*.7z     binary
+*.gz     binary
+*.tar    binary
+*.exe    binary
+*.dll    binary
+*.dmg    binary
+*.mp4    binary
+*.mp3    binary
+*.wav    binary
+*.otf    binary
+*.woff   binary
+*.woff2  binary
+*.ttf    binary
+*.pdf    binary

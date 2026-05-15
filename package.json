@@ -1,6 +1,6 @@
 {
   "name": "admed",
-  "version": "2.1.9",
+  "version": "2.1.10",
   "description": "ADMed for Windows",
   "main": "main.js",
   "type": "commonjs",

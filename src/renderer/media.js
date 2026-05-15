@@ -8,6 +8,9 @@ let imageTimer = null;
 //  쌓인 stale 타이머가 다음 항목의 videoEl.currentTime 을 엉뚱하게 +5초 seek → 짧은 클립이 반복 재생됨)
 let hlsStallTimer = null;
 let hlsManifestTimer = null;
+// stall checker 를 첫 'playing' 이벤트 후에 arm 하기 위한 컨트롤러.
+// 첫 segment 가 늦게 와서 currentTime 이 0 에 머무는 동안 stall 로 오인하는 false-positive 차단용.
+let hlsArmCtl = null;
 
 function clearImageTimer() {
   if (imageTimer) {
@@ -33,6 +36,10 @@ function clearHlsManifestTimer() {
 function destroyHls() {
   clearHlsStallTimer();
   clearHlsManifestTimer();
+  if (hlsArmCtl) {
+    hlsArmCtl.abort();
+    hlsArmCtl = null;
+  }
   if (hlsInstance) {
     hlsInstance.destroy();
     hlsInstance = null;
@@ -46,6 +53,9 @@ function resetMedia(nextType) {
   videoEl.style.display = 'none';
   videoEl.removeAttribute('src');
   videoEl.load();
+  // 이전 항목의 stall seek 으로 점프된 currentTime 이 다음 항목 시작 위치로
+  // 새어 들어가는 것 차단 (load() 만으론 일부 경로에서 reset 보장 안 됨).
+  videoEl.currentTime = 0;
 
   if (nextType !== 'image') {
     imageEl.style.display = 'none';
@@ -110,6 +120,8 @@ export function playIndex(idx) {
         enableWorker: true,
         progressive: true,
         lowLatencyMode: false,
+        // attachMedia 시점의 videoEl.currentTime 대신 항상 0 부터 시작.
+        startPosition: 0,
         maxBufferLength: 30,
         maxMaxBufferLength: 60,
         maxBufferSize: 60 * 1000000,
@@ -164,7 +176,13 @@ export function playIndex(idx) {
         hlsStallTimer = setTimeout(checkStalled, 3000);
       }
 
-      hlsStallTimer = setTimeout(checkStalled, 3000);
+      // 첫 'playing' 이벤트 후에만 stall checker arm — manifest_loaded 직후 buffer 채우는
+      // 동안의 currentTime 0 상태를 stall 로 오인하지 않도록 한다 (Windows cold disk 시나리오).
+      // playing 이 영영 발화 안 하는 시나리오(첫 segment 완전 실패)는 hls.js fragLoadingMaxRetry → ERROR fatal → destroyHls + callPlayNext 경로로 cover.
+      hlsArmCtl = new AbortController();
+      videoEl.addEventListener('playing', () => {
+        hlsStallTimer = setTimeout(checkStalled, 3000);
+      }, { once: true, signal: hlsArmCtl.signal });
 
       hlsInstance.on(window.Hls.Events.ERROR, (_, data) => {
         log(`HLS error [${data.type}/${data.details}]`);

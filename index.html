@@ -343,6 +343,13 @@
         -webkit-app-region: no-drag;
         display: block;
       }
+      /* 영상 buffering 동안 ADMed 로고를 video 배경으로. video frame 이 그려지면 자동으로 가려짐. */
+      video {
+        background-image: url('./images/logo_full.png');
+        background-repeat: no-repeat;
+        background-position: center center;
+        background-size: 40%;
+      }
       #status-overlay {
         position: fixed;
         inset: 0;
@@ -512,7 +519,7 @@
         cursor: grab;
         -webkit-app-region: drag; /* 항상 드래그 가능 */
         user-select: none;
-        background-image: url('./images/move_icon.png');
+        background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='5,9 2,12 5,15'/%3E%3Cpolyline points='9,5 12,2 15,5'/%3E%3Cpolyline points='15,19 12,22 9,19'/%3E%3Cpolyline points='19,9 22,12 19,15'/%3E%3Cline x1='2' y1='12' x2='22' y2='12'/%3E%3Cline x1='12' y1='2' x2='12' y2='22'/%3E%3C/svg%3E");
         background-size: 26px 26px;
         background-repeat: no-repeat;
         background-position: center;
