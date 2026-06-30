@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('mediaAPI', {
-  preparePlaylist: () => ipcRenderer.invoke('playlist:prepare'),
+  preparePlaylist: (allowBackground) => ipcRenderer.invoke('playlist:prepare', allowBackground),
   fetchNotices: () => ipcRenderer.invoke('notice:fetch'),
   showContextMenu: () => ipcRenderer.invoke('context:menu'),
   getWeatherConfig: () => ipcRenderer.invoke('weather:config'),

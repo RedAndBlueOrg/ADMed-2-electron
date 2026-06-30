@@ -19,7 +19,66 @@ function sendDownloadProgress(payload) {
   }
 }
 
-async function preparePlaylist() {
+// 운영 중(allowBackground) 백그라운드로 받고 있는 HLS-ZIP 패키지(safeBase) 집합.
+// 사이클을 넘어 살아남아 ① 같은 패키지 중복 다운로드를 막고 ② 스피너 표시(active) 판정에 쓰인다.
+const hlsZipInProgress = new Set();
+
+// HLS-ZIP 패키지 다운로드 + 추출 (진행률/오버레이 보고는 호출자 책임). 첫 다운로드 실패 시 throw.
+// preparePlaylist 의 콜드 스타트(await)와 운영 중(background) 양쪽이 공유한다.
+async function doHlsZipDownloadExtract(item, { safeBase, destDir, zipPath, m3u8Direct }) {
+  const zipExists = fs.existsSync(zipPath);
+  // ZIP이 이미 있으면 다운로드 스킵, 추출만 재시도
+  if (!zipExists) {
+    await downloadFileWithHeaders(item.url, zipPath);
+  } else {
+    console.log(`[hls-zip] zip exists, skip download: ${safeBase}.zip`);
+  }
+
+  // 파일 내용으로 포맷 판별: 텍스트 첫 줄이 #EXT → m3u8, 아니면 ZIP 시도
+  const headBuf = Buffer.alloc(64);
+  const fd = fs.openSync(zipPath, 'r');
+  const bytesRead = fs.readSync(fd, headBuf, 0, 64, 0);
+  fs.closeSync(fd);
+  const headText = headBuf.slice(0, bytesRead).toString('utf8').trim();
+  const isM3u8 = headText.startsWith('#EXTM3U') || headText.startsWith('#EXT');
+
+  if (isM3u8) {
+    console.log(`[hls-zip] OK (m3u8 direct): ${safeBase}`);
+    fs.renameSync(zipPath, m3u8Direct);
+    return;
+  }
+
+  try {
+    await extractZip(zipPath, destDir);
+    console.log(`[hls-zip] OK (zip extracted): ${safeBase}`);
+  } catch (zipErr) {
+    // 7-Zip 에러여도 m3u8가 추출됐으면 부분 성공
+    if (findFirstManifest(destDir)) {
+      console.log(`[hls-zip] OK (partial extract): ${safeBase}`);
+    } else if (zipExists) {
+      // m3u8도 없고 기존 zip → 잘린 파일, 재다운로드
+      console.warn(`[hls-zip] corrupt zip, re-downloading: ${safeBase}.zip`);
+      try { fs.rmSync(zipPath, { force: true }); } catch {}
+      try { fs.rmSync(destDir, { recursive: true, force: true }); } catch {}
+      ensureDir(destDir);
+      await downloadFileWithHeaders(item.url, zipPath);
+      try {
+        await extractZip(zipPath, destDir);
+        console.log(`[hls-zip] OK (re-downloaded & extracted): ${safeBase}`);
+      } catch (zipErr2) {
+        if (findFirstManifest(destDir)) {
+          console.log(`[hls-zip] OK (re-download partial): ${safeBase}`);
+        } else {
+          console.warn(`[hls-zip] re-download extract failed: ${zipErr2.message}`);
+        }
+      }
+    } else {
+      console.warn(`[hls-zip] extract failed, no m3u8: ${zipErr.message}`);
+    }
+  }
+}
+
+async function preparePlaylist({ allowBackground = false } = {}) {
   state.contentSyncing = true;
   const cacheRoot = path.join(app.getPath('userData'), CACHE_ROOT_NAME);
   ensureDir(cacheRoot);
@@ -37,7 +96,9 @@ async function preparePlaylist() {
   const getItemDisplayName = (item) => item?.title || item?.id || item?.url || '';
 
   const notifyDownload = (overrides = {}) => {
-    const active = downloadActive > 0;
+    // 이 prepare 호출의 동기 다운로드(downloadActive) 또는 사이클을 넘어 살아있는
+    // 백그라운드 HLS-ZIP(hlsZipInProgress) 중 하나라도 있으면 active → 스피너 유지.
+    const active = downloadActive > 0 || hlsZipInProgress.size > 0;
     sendDownloadProgress({
       total: downloadTotal,
       finished: Math.min(downloadFinished, downloadTotal),
@@ -59,6 +120,24 @@ async function preparePlaylist() {
     if (!downloadTotal) return;
     downloadFinished = Math.min(downloadFinished + 1, downloadTotal);
     notifyDownload(overrides);
+  };
+
+  // 운영 중: 미캐시 HLS-ZIP 을 await 하지 않고 백그라운드로 받는다. 같은 패키지가 이미
+  // 받는 중이면(이전 사이클) 재시작하지 않는다. 받는 동안 hlsZipInProgress 가 스피너를 유지.
+  const startHlsZipBackground = (item, paths) => {
+    if (hlsZipInProgress.has(paths.safeBase)) return;
+    hlsZipInProgress.add(paths.safeBase);
+    notifyDownload();
+    doHlsZipDownloadExtract(item, paths)
+      .catch((err) => {
+        console.error(`[hls-zip] background download failed: ${item.url}`, err.message);
+      })
+      .finally(() => {
+        hlsZipInProgress.delete(paths.safeBase);
+        // 이 notifyDownload 는 시작 사이클의 클로저라 total/finished 가 stale 할 수 있으나,
+        // 운영 중엔 렌더러가 n/m 큰 오버레이를 안 쓰고 active 불리언만 도넛에 쓰므로 무해.
+        notifyDownload();
+      });
   };
 
   try {
@@ -168,63 +247,24 @@ async function preparePlaylist() {
       }
 
       const alreadyCached = (fs.existsSync(zipPath) || fs.existsSync(m3u8Direct)) && !!findFirstManifest(destDir);
+      const hlsPaths = { safeBase, destDir, zipPath, m3u8Direct };
 
+      // 운영 중(allowBackground) 미캐시 패키지: 차단하지 않고 백그라운드로 받는다.
+      // 이번 사이클은 streamUrl 없이 반환 → 렌더러가 skip 하고 준비된 다음 항목을 재생,
+      // 패키지는 받아지면 다음 사이클에 합류. (cleanup 이 지우지 않도록 경로는 keep)
+      if (!alreadyCached && allowBackground) {
+        keepPaths.add(destDir);
+        keepPaths.add(zipPath);
+        prepared.push({ ...item, type: 'hls' });
+        startHlsZipBackground(item, hlsPaths);
+        continue;
+      }
 
+      // 콜드 스타트(또는 이미 캐시됨): 기존처럼 차단(await) — 다 받고 즉시 재생.
       if (!alreadyCached) {
-        const zipExists = fs.existsSync(zipPath);
         const endActive = beginActiveDownload({ currentTitle: currentDownloadTitle });
         try {
-          // ZIP이 이미 있으면 다운로드 스킵, 추출만 재시도
-          let dlContentType = '';
-          if (!zipExists) {
-            const dl = await downloadFileWithHeaders(item.url, zipPath);
-            dlContentType = dl.contentType || '';
-          } else {
-            console.log(`[hls-zip] zip exists, skip download: ${safeBase}.zip`);
-          }
-
-          // 파일 내용으로 포맷 판별: 텍스트 첫 줄이 #EXT → m3u8, 아니면 ZIP 시도
-          const headBuf = Buffer.alloc(64);
-          const fd = fs.openSync(zipPath, 'r');
-          const bytesRead = fs.readSync(fd, headBuf, 0, 64, 0);
-          fs.closeSync(fd);
-          const headText = headBuf.slice(0, bytesRead).toString('utf8').trim();
-          const isM3u8 = headText.startsWith('#EXTM3U') || headText.startsWith('#EXT');
-
-          if (isM3u8) {
-            console.log(`[hls-zip] OK (m3u8 direct): ${safeBase}`);
-            fs.renameSync(zipPath, m3u8Direct);
-          } else {
-            try {
-              await extractZip(zipPath, destDir);
-              console.log(`[hls-zip] OK (zip extracted): ${safeBase}`);
-            } catch (zipErr) {
-              // 7-Zip 에러여도 m3u8가 추출됐으면 부분 성공
-              if (findFirstManifest(destDir)) {
-                console.log(`[hls-zip] OK (partial extract): ${safeBase}`);
-              } else if (zipExists) {
-                // m3u8도 없고 기존 zip → 잘린 파일, 재다운로드
-                console.warn(`[hls-zip] corrupt zip, re-downloading: ${safeBase}.zip`);
-                try { fs.rmSync(zipPath, { force: true }); } catch {}
-                try { fs.rmSync(destDir, { recursive: true, force: true }); } catch {}
-                ensureDir(destDir);
-                await downloadFileWithHeaders(item.url, zipPath);
-                try {
-                  await extractZip(zipPath, destDir);
-                  console.log(`[hls-zip] OK (re-downloaded & extracted): ${safeBase}`);
-                } catch (zipErr2) {
-                  if (findFirstManifest(destDir)) {
-                    console.log(`[hls-zip] OK (re-download partial): ${safeBase}`);
-                  } else {
-                    console.warn(`[hls-zip] re-download extract failed: ${zipErr2.message}`);
-                  }
-                }
-              } else {
-                console.warn(`[hls-zip] extract failed, no m3u8: ${zipErr.message}`);
-              }
-            }
-          }
-
+          await doHlsZipDownloadExtract(item, hlsPaths);
           endActive();
         } catch (err) {
           console.error(`download failed for package ${item.url}`, err);

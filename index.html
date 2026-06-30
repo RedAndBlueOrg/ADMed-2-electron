@@ -416,6 +416,30 @@
         font-size: clamp(14px, calc(16px * var(--ui-scale)), 20px);
         opacity: 0.9;
       }
+      /* 새 콘텐츠 수신/재시도 중 직전 프레임 위에 띄우는 코너 도넛 스피너 */
+      #content-spinner {
+        position: absolute;
+        bottom: clamp(12px, calc(20px * var(--ui-scale)), 32px);
+        right: clamp(12px, calc(20px * var(--ui-scale)), 32px);
+        width: clamp(28px, calc(40px * var(--ui-scale)), 56px);
+        height: clamp(28px, calc(40px * var(--ui-scale)), 56px);
+        border: clamp(3px, calc(4px * var(--ui-scale)), 6px) solid rgba(255, 255, 255, 0.25);
+        border-top-color: rgba(255, 255, 255, 0.95);
+        border-radius: 50%;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+        display: none;
+        pointer-events: none;
+        z-index: 1100; /* 콘텐츠 위, download-overlay(1200)·status(9999) 아래 */
+        animation: spin 0.9s linear infinite;
+      }
+      #content-spinner.visible {
+        display: block;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
       #version-toast {
         position: fixed;
         bottom: 18px;
@@ -602,6 +626,7 @@
         ></video>
         <img id="image" alt="슬라이드" style="display:none;" />
         <div id="status-overlay"><img src="./images/logo_full.png" alt="ADMed 로고" /></div>
+        <div id="content-spinner" aria-hidden="true"></div>
         <div class="move-handle" aria-label="창 이동"></div>
       </div>
       <div id="weather-panel">

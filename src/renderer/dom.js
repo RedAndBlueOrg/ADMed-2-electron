@@ -25,6 +25,7 @@ export const downloadOverlay = document.getElementById('download-overlay');
 export const downloadProgressFill = document.getElementById('download-progress-fill');
 export const downloadProgressText = document.getElementById('download-progress-text');
 export const downloadProgressBar = document.getElementById('download-progress-bar');
+export const contentSpinner = document.getElementById('content-spinner');
 export const versionToast = document.getElementById('version-toast');
 
 /** Centralised log — hides status overlay once content starts playing. */

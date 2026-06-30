@@ -94,3 +94,29 @@
 - 영향 범위: renderer `media.js` 1파일. IPC/preload/main 변경 없음. 회귀 risk 낮음 — Fix A 는 진짜 stall (영상 시작 후 buffer underrun) 시엔 그대로 동작, Fix B 는 새 항목 시작 시점에만 currentTime=0 set.
 - 추가 변경 (같은 commit): `index.html` video element 의 background 에 ADMed 로고 표시 (영상 buffering 동안만 보이고 frame 그려지면 자동 가려짐). `.move-handle` 의 background-image 를 SVG inline 으로 교체 (binary 의존 제거). `images/logo_full.png` 가 이전 `.gitattributes` 의 `* text eol=lf` 룰로 LF 변환되어 PNG 시그니처(`0D 0A`) 손상돼 있던 것을 정상 복원 (1 byte 차이). `images/move_icon.png` 도 같은 손상 + 사용처 SVG 대체로 삭제. `.gitattributes` 를 `* text=auto eol=lf` + binary 명시 룰(*.png, *.otf 등) 로 재작성, 미래 binary 손상 차단.
 - 다음 단계: tester / reviewer 위임 완료 (둘 다 PASS, P0 차단 0건). Mac 로컬 인공 delay 재현으로 fix 검증 완료 — `HLS stall #N` 로그 0건. 패치 릴리스 v2.1.10 (v2.1.9 base) → 운영 안전망 패턴(pre-release 마크 → Windows 1대 수동 검증 → OK 면 해제). incident-log 2026-05-13 항목은 현장 재발 안 확인되면 ✅ 격상.
+
+## 2026-06-30 운영 중 "콘텐츠 없음" 영구 정지 self-heal + 코너 도넛 스피너 (renderer 5파일)
+
+- 동기: 현장 사진 보고 — 운영 중 새 템플릿을 올리면, 한 사이클 끝나고 루프 재시작 시 "콘텐츠를 불러오지 못했습니다 / No playable content available" 에러로 영구 정지. 수동 새로고침해야만 새 콘텐츠 다운로드·진행. 첫 실행·수동 새로고침은 정상.
+- 진단(코드): 루프 재시작 `loadPlaylist({fromCycle})` → `preparePlaylist()` 재fetch 자체는 정상. 그러나 갓 올린 `hls-zip` 이 그 한 번의 prepare 에서 404(업로드 직후 미전파)/추출 일시 실패 → `streamUrl`·`localFile` 없는 항목만 남아 renderer `firstPlayable<0`. "no playable" 분기가 에러만 띄우고 **재시도 타이머를 안 걸어**(예외 `catch` 분기에만 retry) 영구 정지. 수동 새로고침이 듣는 건 그때 prepare 재실행으로 성공하기 때문. 메인 다운로드 경로는 이미 재시도·손상처리 보유 → 손대지 않음.
+- 변경(사용자 확정 UX = "직전 콘텐츠 유지"):
+  - **self-heal** — 운영 중(`state.hasEverPlayed`) no-playable 시 빨간 에러 대신 직전 프레임 유지(resetMedia/playIndex 미호출) + `NO_CONTENT_RETRY_MS`(5초) 간격 `attemptRecovery()` 자동 재시도 → 새 콘텐츠 준비되면 자동 교체. 콜드 스타트(한 번도 재생 못 함)만 에러(+자동 재시도). `firstPlayable>=0` 시 `hasEverPlayed=true`.
+  - **코너 도넛 스피너** — `#player` 우하단 `#content-spinner`(CSS `@keyframes spin`). `state.downloadActive || state.fetchingContent` 면 `SPINNER_DELAY_MS`(500ms) 지연 후 표시(짧은 캐시 사이클 깜빡임 방지). 운영 중엔 화면 덮는 큰 `#download-overlay` 대신 도넛만, 콜드 스타트(`overlayLocked`)엔 기존 큰 진행 오버레이 유지.
+  - reviewer P1 반영: `catch`/no-serial 경로에서 `state.downloadActive` 도 정리(prepare throw 시 progress active:false 미수신으로 도넛 영구 회전하던 edge 차단). catch 재시도도 `NO_CONTENT_RETRY_MS` 공유.
+- 영향 범위: renderer 5파일(`playlist.js`/`state.js`/`overlays.js`/`dom.js` + `index.html`). IPC/preload/main 변경 없음 → 계약·보안 경계 그대로.
+- 검증: `node --input-type=module --check` 4파일 OK + tester·reviewer PASS(P0 0). **Mac `npm start` 스모크(직전 프레임 유지 + 5초 자동 복구 = acceptance) + Windows pre-release 수동 검증 대기.**
+- 트레이드오프(확정): 운영 중엔 환자에게 에러 미노출 → 콘텐츠 영구 손상 시에도 직전 광고 + 도넛만, 에러는 DevTools 로그로만.
+- 다음 단계: 사용자 Mac 스모크 OK → commit + `package.json` 2.1.11 → **사용자 승인 후** `v2.1.11` 태그 푸시 → pre-release 마크 → Windows 1대 검증 → OK 면 해제(문제 시 Release 삭제로 2.1.10 유지).
+- Mac 라이브 시연 완료: fault 주입으로 운영 중 no-playable 강제 → 직전 이미지 프레임 유지 + 우하단 도넛 + 빨간 에러 0 + 정확히 5초 간격 자동 재시도 확인. 주입 코드 원복.
+
+## 2026-06-30 (2차) FABCDE freeze 제거 — 비차단 백그라운드 HLS-ZIP + IPC `allowBackground`
+
+- 동기: 위 1차로 "no-playable 에러"는 사라졌지만, 새 템플릿 F 가 맨 앞에 추가돼 `FABCDE` 로 받아질 때 F(미캐시 `hls-zip`) 다운로드를 `preparePlaylist` 가 **`await`(차단)** 해서 A 가 바로 안 나오고 직전 프레임에 멈춤(freeze). F 가 크면(현장 600MB+ 관측) 수십 초~분. 사용자 요구: "F 는 스피너로 받고 A 로 넘어가야".
+- 변경:
+  - **main `src/main/playlist.js`** — `preparePlaylist({allowBackground})` 시그니처화. 운영 중(`allowBackground`) 미캐시 HLS-ZIP 은 `await` 대신 `startHlsZipBackground()` 로 백그라운드 다운로드, 이번 사이클은 `streamUrl` 없이 push → 렌더러가 skip 하고 준비된 항목부터 재생, 패키지는 받아지면 다음 사이클에 합류. 모듈 `hlsZipInProgress` Set(중복 다운로드 방지 + 스피너 active 판정). 다운로드+추출 로직을 `doHlsZipDownloadExtract()` 로 추출(콜드/백그라운드 공유, 동작 등가 — 미사용 `dlContentType` 만 제거). `notifyDownload` active = `downloadActive>0 || hlsZipInProgress.size>0`.
+  - **콜드 스타트는 차단 유지** — 렌더러가 `preparePlaylist(state.hasEverPlayed)` 로 전달, `false`(첫 실행)면 기존처럼 await + 큰 n/m 오버레이 → 다 받고 재생. 요청 "처음엔 n/m 다운로드중" 보존.
+  - **IPC `playlist:prepare`** — `preload.js`/`main.js`/렌더러 호출처에 `allowBackground` 인자 동기 추가(미전달 시 `false` 폴백 — 하위호환). `docs/architecture/ipc-contracts.md` 표 갱신.
+  - **renderer `media.js`** — `playIndex` 에서 not-ready(streamUrl/localFile 없음) skip 검사를 `resetMedia` **앞**으로 이동 → 미준비 항목 건너뛸 때 직전 프레임 안 지워 검은 깜빡임 방지(reviewer 관찰 반영).
+- 영향 범위: `src/main/playlist.js`(핵심) + `preload.js` + `main.js` + `src/renderer/playlist.js` + `src/renderer/media.js`. cache-server/보안 경계 무변경.
+- 검증: 5파일 `node --check` OK + 스타트업 스모크(크래시 0, HLS 영상 재생) + **tester·reviewer·verifier 전부 PASS, P0 0**. P1 = ipc-contracts.md 문서 갱신(반영 완료). P2(cross-cycle 스피너 깜빡임 = SPINNER_DELAY_MS 흡수, stale 클로저 n/m = 운영 중 미사용) = 무해, 주석화. **운영 중 새 템플릿 추가 실측 + Windows pre-release 수동 검증 대기.**
+- 알려진 미세 edge(자가복구): 백그라운드 받는 중 F 가 시나리오에서 다시 빠지면 keepPaths 누락으로 cleanup 이 partial 삭제 가능 → 백그라운드 catch 로 무해 실패, F 는 어차피 제거된 항목.

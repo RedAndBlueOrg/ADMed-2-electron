@@ -32,9 +32,9 @@ const { detectIpLocation } = require('./src/main/ip-location');
 // App lifecycle
 app.whenReady().then(async () => {
   // IPC handlers — register BEFORE creating window so renderer can use them immediately
-  ipcMain.handle('playlist:prepare', async () => {
+  ipcMain.handle('playlist:prepare', async (_event, allowBackground) => {
     try {
-      return await preparePlaylist();
+      return await preparePlaylist({ allowBackground: !!allowBackground });
     } catch (err) {
       state.contentSyncing = false;
       throw err;

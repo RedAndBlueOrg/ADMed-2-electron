@@ -84,13 +84,15 @@ export function playIndex(idx) {
   const item = state.playlist[idx];
   if (!item) return;
 
-  resetMedia(item.type);
-
+  // 아직 안 받아진 항목(streamUrl/localFile 없음 — 백그라운드 다운로드 중이거나 실패)은
+  // resetMedia 로 직전 프레임을 지우기 전에 곧장 다음으로 넘긴다 → 건너뛸 때 검은 화면 깜빡임 방지.
   if (!item.localFile && !item.streamUrl) {
     log(`Playback unavailable: ${item.url || 'unknown'} (download failed?), skipping`);
     callPlayNext();
     return;
   }
+
+  resetMedia(item.type);
 
   state.currentIndex = idx;
   renderPlaylist();

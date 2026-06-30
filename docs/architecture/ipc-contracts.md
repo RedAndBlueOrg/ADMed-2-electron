@@ -6,7 +6,7 @@
 
 | 채널 | main 등록 | preload 브리지 | renderer 호출 | 인자 → 반환 |
 |------|----------|---------------|--------------|------------|
-| `playlist:prepare` | `main.js` → `preparePlaylist()` (`src/main/playlist.js`) | `mediaAPI.preparePlaylist()` | `playlist.js` `loadPlaylist()` | () → `{playlist[], waitingInfo, noticeList[], memberSeq, deviceSerial, clinicApiOrigin, clinicWsOrigin, landingUrl}` (에러 시 throw) |
+| `playlist:prepare` | `main.js` → `preparePlaylist({allowBackground})` (`src/main/playlist.js`) | `mediaAPI.preparePlaylist(allowBackground)` | `playlist.js` `loadPlaylist()` | `(allowBackground:boolean)` → `{playlist[], waitingInfo, noticeList[], memberSeq, deviceSerial, clinicApiOrigin, clinicWsOrigin, landingUrl}` (에러 시 throw). `allowBackground=true`(운영 중, `hasEverPlayed`)면 미캐시 HLS-ZIP 을 await 안 하고 백그라운드로 받아 준비된 항목부터 즉시 재생; `false`(콜드 스타트)면 기존처럼 차단+큰 n/m 오버레이 |
 | `notice:fetch` | `main.js` → `fetchNoticesFast()` (`src/main/scenario-api.js`) | `mediaAPI.fetchNotices()` | `notice.js` `loadNotices()` | () → `{noticeList[], waitingInfo}` 또는 `{noticeList:[], waitingInfo:null, error}` |
 | `weather:config` | `main.js` (인라인) | `mediaAPI.getWeatherConfig()` | `weather.js` `useConfigWeather()` | () → `{lat, lon, weatherServiceUrl, weatherServiceKey}` |
 | `app:version` | `main.js` → `app.getVersion()` | `appInfo.getVersion()` | `overlays.js` `renderVersionToast()` | () → `string` |
