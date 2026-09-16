@@ -76,7 +76,8 @@ export function renderPlaylist() {
 
 function callPlayNext() {
   if (state.onPlayNext) {
-    Promise.resolve(state.onPlayNext()).catch(() => {});
+    // 삼키면 안 된다 — 이 경로에서 터진 예외는 재생 루프를 무증상 정지시킨다 (incident-log 2026-09-16).
+    Promise.resolve(state.onPlayNext()).catch((err) => log(`playNext failed: ${err.message}`));
   }
 }
 
@@ -88,6 +89,9 @@ export function playIndex(idx) {
   // resetMedia 로 직전 프레임을 지우기 전에 곧장 다음으로 넘긴다 → 건너뛸 때 검은 화면 깜빡임 방지.
   if (!item.localFile && !item.streamUrl) {
     log(`Playback unavailable: ${item.url || 'unknown'} (download failed?), skipping`);
+    // currentIndex 를 먼저 전진시킨다 — playNext 가 이 값 +1 로 다음을 정하므로,
+    // 갱신 없이 넘기면 같은 인덱스를 동기 재귀 호출해 스택이 터지고 재생 루프가 조용히 죽는다.
+    state.currentIndex = idx;
     callPlayNext();
     return;
   }

@@ -38,14 +38,14 @@ window.addEventListener('beforeunload', () => {
 
 // --- Video events ---
 videoEl.addEventListener('ended', () => {
-  if (state.onPlayNext) Promise.resolve(state.onPlayNext()).catch(() => {});
+  if (state.onPlayNext) Promise.resolve(state.onPlayNext()).catch((err) => log(`playNext failed: ${err.message}`));
 });
 videoEl.addEventListener('waiting', () => log('Buffering...'));
 videoEl.addEventListener('stalled', () => log('Stream stalled'));
 videoEl.addEventListener('error', () => {
   const err = videoEl.error;
   if (err) log(`Video error: ${err.message || err.code}, skipping to next`);
-  if (state.onPlayNext) Promise.resolve(state.onPlayNext()).catch(() => {});
+  if (state.onPlayNext) Promise.resolve(state.onPlayNext()).catch((err) => log(`playNext failed: ${err.message}`));
 });
 
 // --- Input prevention ---

@@ -47,3 +47,9 @@
 - **연결**: `src/main/updater.js` `quitAndInstall` ↔ `src/main/state.js` `contentSyncing` / `pendingUpdateInstall` ↔ `src/main/playlist.js` `preparePlaylist()` (시작 시 `contentSyncing = true`, 끝/에러 시 `false`)
 - **이유**: 현재 정책은 "업데이트 우선 — 동기화 중이어도 즉시 설치, 재시작 후 동기화 재개". 정책을 "동기화 끝날 때까지 대기" 로 바꾸려면 두 모듈을 함께 봐야 함. 코드상 직접 호출 관계 없이 플래그로만 연결됨.
 - **변경 시 검사**: `updater.js` 의 `update-downloaded` 핸들러 ↔ `playlist.js` 의 `state.contentSyncing` 토글 ↔ `docs/features/updater.md`.
+
+## `state.currentIndex` ↔ `playNext()` 의 전진 ↔ main 이 `streamUrl` 없이 push 하는 경로
+
+- **연결**: `src/renderer/media.js` `playIndex()` 의 **모든 조기 반환 분기**(미준비 항목 skip) ↔ `src/renderer/playlist.js` `playNext()` 의 `state.currentIndex + 1` ↔ `src/main/playlist.js` 가 `streamUrl`/`localFile` 없이 `prepared` 에 push 하는 3경로(백그라운드 HLS-ZIP / hls-zip 다운로드 실패 / m3u8 못 찾음)
+- **이유**: `currentIndex` 를 전진시키는 **유일한** 근거가 `playNext()` 의 `+1` 이다. `playIndex` 가 항목을 건너뛰면서 이 값을 갱신하지 않으면 `playNext` 가 같은 인덱스를 다시 호출하고, `playNext` 는 `async` 지만 `playIndex` 앞에 `await` 가 없어 **동기 재귀**라 스택이 터진다. 터진 `RangeError` 는 `callPlayNext()` 의 `.catch(() => {})` 가 삼키므로 **에러 화면도 로그도 재시도도 없이 재생 루프가 죽는다**(재부팅 전 복구 불가). main 쪽에서 "렌더러가 알아서 skip 하겠지" 하고 미준비 항목을 push 하는 순간 발동하는데, 두 파일 사이에 코드상 호출 관계가 없어 grep 으로 안 잡힌다. 2.1.11 에서 실제로 터졌다(2026-09-16 incident-log).
+- **변경 시 검사**: `media.js` 에 조기 반환 분기 추가 → 반드시 `state.currentIndex = idx` 선행 / main 에 `streamUrl` 없이 push 하는 경로 추가 → 렌더러 skip 체인을 "목록 중간·마지막" 배치로 실제 확인 / `playNext()` 의 전진 방식 변경 → `media.js` 의 모든 분기 재점검.

@@ -120,3 +120,37 @@
 - 영향 범위: `src/main/playlist.js`(핵심) + `preload.js` + `main.js` + `src/renderer/playlist.js` + `src/renderer/media.js`. cache-server/보안 경계 무변경.
 - 검증: 5파일 `node --check` OK + 스타트업 스모크(크래시 0, HLS 영상 재생) + **tester·reviewer·verifier 전부 PASS, P0 0**. P1 = ipc-contracts.md 문서 갱신(반영 완료). P2(cross-cycle 스피너 깜빡임 = SPINNER_DELAY_MS 흡수, stale 클로저 n/m = 운영 중 미사용) = 무해, 주석화. **운영 중 새 템플릿 추가 실측 + Windows pre-release 수동 검증 대기.**
 - 알려진 미세 edge(자가복구): 백그라운드 받는 중 F 가 시나리오에서 다시 빠지면 keepPaths 누락으로 cleanup 이 partial 삭제 가능 → 백그라운드 catch 로 무해 실패, F 는 어차피 제거된 항목.
+
+## 2026-06-30 (배포 상태) v2.1.11 — Draft 보류
+
+- 커밋 `e166860` (1·2차 통합) → origin/main 푸시 완료. `v2.1.11` 태그 푸시 → CI(windows-latest) 빌드 success.
+- **CI 가 Release 를 Draft 로 생성** (electron-builder 기본 releaseType=draft). Draft 는 electron-updater 에 안 보여 **현장 자동업데이트 안 됨** → 별도 pre-release 마킹 불필요(운영 문서의 "pre-release 마크" 보다 더 안전). 자산: `ADMed-2.1.11-Setup.exe`(~93MB) + `latest.yml`.
+- 현장 Latest = **2.1.10 그대로**. 사용자 결정 = **"Draft 보류"** (승격/롤백 안 함, 추후 결정). 승격은 `gh release edit v2.1.11 --draft=false --latest`, 롤백은 `gh release delete v2.1.11` + 태그 삭제.
+- 미해결 의문: 그날 "No playable content" 실제 트리거(빈 목록 vs 404)는 재현 안 돼 미확정 → 사용자 "다음에 또 나면 그때 보기". **parked 아이디어**: no-playable 순간 원인(빈 목록/404/API에러)을 로컬 파일에 남기는 진단 로그(현장은 DevTools·stdout 미수집이라, 자동복구가 에러 화면을 덮으면 증거가 안 남음 → 원인 추적하려면 필요).
+
+## 2026-09-16 (배포 완료) v2.1.11 — Draft 해제 → 현장 Latest
+
+- 동기: 현장에서 "콘텐츠를 불러오지 못했습니다"가 계속 관측됨. 원인 추적 결과 = 2.1.11 이 이미 고쳐놓은 그 버그인데 Release 가 **Draft 인 채 두 달 반 방치**되어 현장에 안 내려가고 있었음 (현장 Latest = 2.1.10).
+- **원인 코드로 확정** (2.1.10 기준): `src/main/playlist.js:64-73` 이 `getScenario()` 실패를 catch 로 **삼키고 `playlist = []` 를 정상 응답처럼 반환** → 렌더러엔 예외가 아니라 *성공했는데 0개* 로 보여, 5초 재시도가 있는 `catch` 가 아니라 **재시도가 없는 `firstPlayable < 0` 분기**로 빠짐 → 영구 정지. 이미지/비디오는 캐시 없어도 `streamUrl` 이 항상 붙으므로(`playlist.js:274-278`) **콘텐츠 404 단독으론 이 에러 불가** → 6월 30일 미해결이던 "빈 목록 vs 404" 의문은 **빈 목록 쪽으로 정리**. 트리거 후보: 부팅 직후 auto-launch 가 DHCP/DNS 보다 먼저 뜸(이때 `navigator.onLine === true` 라 유일한 복구 트리거인 `online` 이벤트도 안 옴) / 서버 배포 중 502·503 / 프록시 HTML 응답으로 `res.json()` 실패.
+- 조치: `gh release edit v2.1.11 --draft=false --latest`. 승격 전 태그 커밋 = `origin/main` = `e166860` 일치 확인.
+- 검증: 릴리스 Latest 전환 + electron-updater 가 읽는 `latest.yml` 공개 URL 응답(`version: 2.1.11`, sha512·size 정상) + `ADMed-2.1.11-Setup.exe` 인증 없이 HTTP 200.
+- **롤백 한계(중요)**: `gh release edit v2.1.10 --latest` 로 Latest 를 되돌려도 **이미 2.1.11 을 설치한 단말은 electron-updater 가 다운그레이드를 하지 않아 자동 복귀 안 됨** → 현장 수동 재설치 필요. Windows 실기 검증 0회 상태로 승격했으므로(사용자 결정) 초기 단말 화면 확인 필요. incident-log 2건은 실기 검증 전이라 ⚠ 유지.
+- 남은 구멍 2개(2.1.11 로도 안 덮임):
+  1. **콜드 스타트 + 서버 다운** — 보여줄 직전 프레임이 없어 에러 화면 노출. 단 5초 재시도로 자동 복구(사람 개입 불필요). 근본 해결은 직전 재생목록 캐시 → **무시 가능** 판단.
+  2. **`fetch` 타임아웃 없음** — 응답 없이 연결만 물린 경우(방화벽 DROP 등) no-playable 분기에 도달조차 못 해 **self-heal 이 작동하지 않는 유일한 경로**. Electron 39.2.7 = undici 6.22.0 확인(main 의 global `fetch`) → 무한이 아니라 기본 `headersTimeout` **300초** 뒤 실패. 즉 최대 5분 정지 후 자동 복구. → 아래 2.1.12 에서 한 줄로 처리.
+
+## 2026-09-16 (핫픽스) v2.1.12 — 재생 루프 무증상 정지 + 캐시 전삭제 + fetch 타임아웃
+
+- 동기: "간혹 콘텐츠를 불러올 수 없습니다" 추적 중 **2.1.11 현장 배포분에 들어간 결정적 P0 두 건**을 코드에서 발견. 캐시 폴백(2.1.13)보다 먼저 나가야 한다고 판단해 최소 범위로 분리.
+- 변경 (코드 3파일, 실제 로직 4줄):
+  1. **`src/renderer/media.js`** — `playIndex()` 미준비 항목 skip 분기에 `state.currentIndex = idx` 선행. 없으면 `playNext()` 의 `currentIndex + 1` 이 같은 인덱스를 가리켜 **동기 재귀 → 스택 오버플로 → `.catch(() => {})` 가 삼켜 재생 루프 무증상 사망**(재부팅 전 복구 불가). 재현: `playIndex(4)` 1회 → 1836회 재귀 후 RangeError (메인·reviewer 독립 재현 동일). 2.1.11 의 백그라운드 HLS-ZIP 이 미준비 항목을 만들므로 **간판 기능이 곧 트리거**였고, 6/30 검증이 "F 를 맨 앞(FABCDE)" 배치라 우연히 비껴갔다.
+  2. **`src/main/cache-server.js`** — `cleanupCache` 진입부 빈 `keepPaths` early return. 시나리오 조회 1회 실패 → `playlist=[]` → `keepPaths` 빈 Set → **캐시 전체 `fs.rmSync`** 를 차단. 과거 13.5GB → 321MB 사고와 같은 클래스.
+  3. **`src/main/scenario-api.js`** — 시나리오·공지 `fetch` 에 `AbortSignal.timeout(10s)`. 없으면 undici 기본 headersTimeout 300초까지 매달려 **self-heal 이 유일하게 도달 못 하는 모드**가 된다(Electron 39.2.7 = undici 6.22.0 실측 확인). 실패는 예외가 아니라 `playlist: []` 로 전달되어 2번 가드의 입력이 된다 — 2·3번이 서로 맞물려 있어 같은 릴리스로 묶었다.
+- 검증: **tester·reviewer 전부 PASS, P0 0건.** tester 는 실제 renderer 모듈을 바이트 동일 복사해 DOM 만 스텁으로 갈아끼운 하네스로 수정 전(1723회 재귀 후 스택 오버플로, `fatal: none` = 예외 은폐 실증) / 수정 후 4개 skip 시나리오(중간·끝·전체·앞 미준비) 정상을 확인했고, `cleanupCache` 유닛 테스트 3케이스 + macOS 라이브 스모크(60초 구동, main 에러 0, stale 자산 9건 정상 정리, 영상 재생 fd 확인)까지 통과. **Windows 실기 검증 대기** — 2.1.11 을 실기 0회로 승격한 전례가 있어 이번엔 실측 후 승격 권장(tester·reviewer 공통 의견).
+- 추가 반영(두 검증 공통 지적): `callPlayNext` 와 `app.js` 의 video ended/error 핸들러에서 **`.catch(() => {})` 눈가리개 제거** → `log()` 로 전환. 이번 P0 가 2.5개월간 안 보인 진짜 이유가 `currentIndex` 누락이 아니라 이 무조건 catch 였다(RangeError 가 통째로 삼켜짐). 다음 번 다른 원인의 예외는 최소한 로그로 드러난다.
+- 타임아웃 10초 판단: 운영 중엔 실패해도 `hasEverPlayed` 경로가 직전 프레임을 유지하고 5초 뒤 재시도하므로, 느린 서버의 결과는 "정지"가 아니라 "옛 콘텐츠가 계속 나온다" — 사이니지에서 올바른 실패 모드. 300초는 IPC 가 안 돌아와 `playlistLoading` 이 물리는 최악 모드였다. 저속 회선 사이트가 확인되면 15초로만 조정(구조 변경 금지).
+- **남은 절반**: `src/main/download.js` 의 `fetch` 는 여전히 무타임아웃 — 대용량 파일(600MB급)이라 전체 시간 `AbortSignal.timeout` 은 부적합하고, headersTimeout/bodyTimeout 방식이 필요. 방화벽 DROP 시 항목당 최대 25분(300초 × 5회 재시도). 2.1.13.
+- **검증 중 새로 발견(2.1.12 범위 밖, 별도 처리)**:
+  - **P1 — `hls.js` 가 unpkg CDN 로드**(`index.html`). 오프라인 부팅(auto-launch 가 DHCP/DNS 보다 먼저)이면 `window.Hls === undefined` + Chromium 네이티브 HLS 미지원 → `media.js` 의 `HLS playback not supported` 분기가 **동기** `callPlayNext()` → 사이클 전체가 한 스택에서 붕괴 → 끝에서 `loadPlaylist({fromCycle})` 이 `if (state.playlistLoading) return` 에 막혀 **retryTimer 도 안 걸리고 루프 사망**. tester 하네스에서 `prepareCount` 1 고정으로 실증. 이번 P0 와 **동일 계열이고 현장 증상의 더 유력한 후보일 수 있다.** 수정은 hls.js 로컬 번들링(CSP 동반) 또는 재진입 가드.
+  - **P2 — `.part` 영구 누적**: `cleanupCache` 가 `.part` 를 무조건 건너뛰어 삭제 주체가 없다. 개발 머신 실측 `2024278-*.zip.part` **687MB**(2026-06-30자) 방치. 현장 단말은 128GB SSD 에 Windows 라 실여유가 넉넉하지 않다. mtime 기준 정리 필요(진행 중 다운로드를 깨지 않도록 여유 있게).
+- 2.1.13 후보: 캐시 폴백(대안 A = 복원 사이클엔 캐시 실재 항목만 재생, 새 다운로드 안 걸기) / cleanup 정책을 호출자 `scenarioOk` 플래그로 이전 + 유예 세대 / 콜드·운영 타임아웃 분리 / `callPlayNext` 마이크로태스크화 / 재생 0건 사이클 레이트 리밋 / 공지·대기열 복원 시효성 처리.

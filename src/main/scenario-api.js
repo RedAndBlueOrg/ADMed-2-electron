@@ -2,6 +2,10 @@
 
 const state = require('./state');
 
+// 응답 없이 연결만 물린 경우(방화벽 DROP 등) undici 기본 headersTimeout(300초)까지 매달려
+// 그동안 렌더러의 no-playable 자동 복구가 작동하지 못한다 → 10초로 끊고 상위 catch 에 맡긴다.
+const FETCH_TIMEOUT_MS = 10000;
+
 function getScenarioApiUrl() {
   const base = process.env.SCENARIO_API_URL || '';
   const deviceSerial = state.configIni.deviceSerial || '';
@@ -36,7 +40,7 @@ async function fetchScenarioPlaylist() {
     );
   }
 
-  const res = await fetch(scenarioUrl);
+  const res = await fetch(scenarioUrl, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`Scenario API request failed: ${res.status}`);
   const data = await res.json();
   const templates = Array.isArray(data.templates) ? data.templates : [];
@@ -90,7 +94,7 @@ async function fetchNoticeList(baseUrl, memberId) {
   const url = buildNoticeUrlFromScenario(baseUrl, memberId);
   if (!url) return [];
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!res.ok) throw new Error(`Notice API request failed: ${res.status}`);
     const data = await res.json();
     if (!Array.isArray(data)) return [];

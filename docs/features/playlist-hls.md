@@ -12,13 +12,14 @@
    - `type` ∈ mp4/mov → `video`
    - URL = `TEMPLATE_BASE_URL?img=<img>&type=<type>`. `waitingInfo` 와 `mSeq.seq`(memberSeq) 도 추출.
    - `fetchNoticeList(apiUrl, memberSeq)` → `<origin>/dapi/clinic/notice/list?memberId=<memberSeq>`
+   - 시나리오·공지 `fetch` 는 둘 다 `AbortSignal.timeout(10s)`(2.1.12). 없으면 undici 기본 headersTimeout 300초까지 매달려 렌더러의 self-heal 이 도달하지 못한다. 실패는 예외가 아니라 `playlist: []` 로 렌더러에 전달된다.
 2. `startCacheServer(cacheRoot)` (`cacheRoot` = `app.getPath('userData')/admed-cache`) → `cache-server.js` 가 `127.0.0.1:<random>/cache` 반환
 3. 각 항목 처리:
    - **image / video**: 캐시 파일명 `<safeBase><ext>` (id 또는 `?img=` 또는 basename → `[^a-zA-Z0-9._-]→-`). 있으면 `localFile`(file:// URL) 로, 없으면 `streamUrl`(원격 URL) 로 즉시 prepared 에 넣고 **백그라운드 다운로드** (`download.js` `downloadFile`). 진행률은 `download:progress` IPC 로 push.
    - **hls** (`type==='hls'` 또는 URL 이 `.m3u8`): 다운로드 안 함 — `streamUrl: item.url` 그대로.
    - **hls-zip**: `<safeBase>.zip` 다운로드 → 파일 첫 64바이트가 `#EXT...` 면 m3u8 직접(rename), 아니면 `extract-zip` 으로 `<safeBase>/` 에 추출 → `findFirstManifest()` 로 `.m3u8` 찾음 → `streamUrl = <cacheBaseUrl>/<rel manifest path>`. 추출 실패해도 m3u8 가 추출됐으면 부분 성공. 잘린 zip 이면 1회 재다운로드. 캐시된 m3u8 첫 16바이트가 `#EXT` 아니면 (과거 잘못 저장) 삭제 후 재시도. 다운로드+추출 코어는 `doHlsZipDownloadExtract()` 로 분리(콜드/백그라운드 공유).
-     - **차단 vs 비차단** (`preparePlaylist({allowBackground})`, `allowBackground` = 렌더러의 `hasEverPlayed`): **콜드 스타트(false)** 는 위 과정을 `await`(차단) → 다 받고 재생, 큰 n/m 오버레이. **운영 중(true)** 미캐시 패키지는 `await` 안 하고 `startHlsZipBackground()` 로 백그라운드 다운로드, 이번 사이클은 `streamUrl` 없이 반환 → 렌더러가 skip(다음 재생 가능 항목으로) → 받아지면 다음 사이클에 합류. 새 템플릿이 맨 앞에 와도 freeze 없이 즉시 다음 항목 재생. 모듈 `hlsZipInProgress` Set 이 같은 패키지 중복 다운로드를 막고 진행 동안 스피너(`active`)를 유지.
-4. `cleanupCache(cacheRoot, keepPaths)` — keepPaths(현재 재생목록 자산) + `.part` 임시 파일 제외하고 삭제. (※ 코드상 "15분 미사용" 로직은 keepPaths 기반 — 매 prepare 마다 안 쓰는 건 즉시 정리)
+     - **차단 vs 비차단** (`preparePlaylist({allowBackground})`, `allowBackground` = 렌더러의 `hasEverPlayed`): **콜드 스타트(false)** 는 위 과정을 `await`(차단) → 다 받고 재생, 큰 n/m 오버레이. **운영 중(true)** 미캐시 패키지는 `await` 안 하고 `startHlsZipBackground()` 로 백그라운드 다운로드, 이번 사이클은 `streamUrl` 없이 반환 → 렌더러가 skip(다음 재생 가능 항목으로 — **2.1.12 부터 실제로 동작**한다. 2.1.11 까지는 skip 이 `state.currentIndex` 를 갱신하지 않아 동기 재귀로 재생 루프가 죽었다. incident-log 2026-09-16 참조) → 받아지면 다음 사이클에 합류. 새 템플릿이 맨 앞에 와도 freeze 없이 즉시 다음 항목 재생. 모듈 `hlsZipInProgress` Set 이 같은 패키지 중복 다운로드를 막고 진행 동안 스피너(`active`)를 유지.
+4. `cleanupCache(cacheRoot, keepPaths)` — keepPaths(현재 재생목록 자산) + `.part` 임시 파일 제외하고 삭제. **단 `keepPaths` 가 비어 있으면 아무것도 지우지 않고 early return**(2.1.12) — 빈 keepPaths 는 "지킬 게 없다"가 아니라 "시나리오 조회 실패로 재생목록을 못 받았다"는 뜻이라, 그대로 진행하면 조회 1회 실패로 캐시 전체가 삭제된다. 가드는 "완전히 빈" 응답만 막고 **부분 응답은 여전히 나머지를 삭제**한다(2.1.13 에서 호출자 플래그로 이전 예정). (※ 코드상 "15분 미사용" 로직은 keepPaths 기반 — 매 prepare 마다 안 쓰는 건 즉시 정리)
 5. 반환: `{playlist[], waitingInfo, noticeList[], memberSeq, deviceSerial, clinicApiOrigin, clinicWsOrigin, landingUrl}`. `deviceSerial` 비어있으면 renderer 가 랜딩 오버레이.
 
 ## 로컬 캐시 HTTP 서버 (`src/main/cache-server.js`)
@@ -27,7 +28,7 @@
 - **Range 요청**: `bytes=start-end` 파싱 → 206 Partial. `.ts` 는 `fs.readFile` 후 `buf.subarray(start, end+1)` (전체 읽고 슬라이스), 그 외는 `fs.createReadStream({start,end})` 스트리밍. `416` 처리.
 
 ## 재생 엔진 (renderer: `src/renderer/media.js`)
-- `playIndex(idx)`: `resetMedia(type)` (타이머/HLS/비디오 정리) → 항목 타입별 분기. `localFile||streamUrl` 없으면 `callPlayNext()`.
+- `playIndex(idx)`: `resetMedia(type)` (타이머/HLS/비디오 정리) → 항목 타입별 분기. `localFile||streamUrl` 없으면 **`state.currentIndex = idx` 로 전진시킨 뒤** `callPlayNext()` — 이 전진을 빠뜨리면 `playNext()` 의 `currentIndex + 1` 이 같은 인덱스를 가리켜 동기 재귀로 스택이 터진다(impact-map 참조).
 - **image**: `imageEl.src` 세팅, `setTimeout(callPlayNext, durationSeconds*1000 || 5000)`.
 - **video**: `videoEl.src = localFile||streamUrl`, `autoplay`, `play()`. `ended` 이벤트 → `state.onPlayNext` (app.js 에 바인딩). `error` 이벤트 → 다음으로.
 - **hls** (`item.type==='hls'`): `window.Hls.isSupported()` 면 `new Hls({...버퍼 설정, fragLoadingMaxRetry:6 등})` → `loadSource(streamUrl)` → `attachMedia(videoEl)`. `MANIFEST_PARSED` → `play()`. 15초 안에 manifest 안 오면 skip. **stall 감지**: 3초마다 `currentTime` 이 0.1초 미만 변화면 stallCount++; ≤2회면 `currentTime += 5` 로 seek + `play()`; 3회째면 skip. `ERROR` 이벤트: non-fatal → pause/play, NETWORK_ERROR → `startLoad()`, MEDIA_ERROR → `recoverMediaError()`, 그 외 fatal → skip. `videoEl.canPlayType('application/vnd.apple.mpegurl')` 면 native HLS, 아니면 skip.

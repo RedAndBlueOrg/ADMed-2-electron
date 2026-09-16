@@ -141,6 +141,13 @@ function findFirstManifest(dirPath) {
 }
 
 function cleanupCache(cacheRoot, keepPaths) {
+  // 빈 keepPaths 는 "지킬 게 없다"가 아니라 "재생목록을 못 받았다"는 뜻이다.
+  // 그대로 진행하면 시나리오 API 가 한 번 실패한 것만으로 캐시 전체가 삭제된다.
+  if (!keepPaths || keepPaths.size === 0) {
+    console.warn('[cache] cleanup skipped: empty keepPaths');
+    return;
+  }
+
   try {
     const entries = fs.readdirSync(cacheRoot, { withFileTypes: true });
 
