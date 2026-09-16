@@ -53,3 +53,15 @@
 - **연결**: `src/renderer/media.js` `playIndex()` 의 **모든 조기 반환 분기**(미준비 항목 skip) ↔ `src/renderer/playlist.js` `playNext()` 의 `state.currentIndex + 1` ↔ `src/main/playlist.js` 가 `streamUrl`/`localFile` 없이 `prepared` 에 push 하는 3경로(백그라운드 HLS-ZIP / hls-zip 다운로드 실패 / m3u8 못 찾음)
 - **이유**: `currentIndex` 를 전진시키는 **유일한** 근거가 `playNext()` 의 `+1` 이다. `playIndex` 가 항목을 건너뛰면서 이 값을 갱신하지 않으면 `playNext` 가 같은 인덱스를 다시 호출하고, `playNext` 는 `async` 지만 `playIndex` 앞에 `await` 가 없어 **동기 재귀**라 스택이 터진다. 터진 `RangeError` 는 `callPlayNext()` 의 `.catch(() => {})` 가 삼키므로 **에러 화면도 로그도 재시도도 없이 재생 루프가 죽는다**(재부팅 전 복구 불가). main 쪽에서 "렌더러가 알아서 skip 하겠지" 하고 미준비 항목을 push 하는 순간 발동하는데, 두 파일 사이에 코드상 호출 관계가 없어 grep 으로 안 잡힌다. 2.1.11 에서 실제로 터졌다(2026-09-16 incident-log).
 - **변경 시 검사**: `media.js` 에 조기 반환 분기 추가 → 반드시 `state.currentIndex = idx` 선행 / main 에 `streamUrl` 없이 push 하는 경로 추가 → 렌더러 skip 체인을 "목록 중간·마지막" 배치로 실제 확인 / `playNext()` 의 전진 방식 변경 → `media.js` 의 모든 분기 재점검.
+
+## `callPlayNext` 의 `setTimeout(...,0)` ↔ `loadPlaylist` 의 `playlistLoading` 재진입 가드
+
+- **연결**: `src/renderer/media.js` `callPlayNext()` 의 `setTimeout(..., 0)` ↔ `src/renderer/playlist.js` `loadPlaylist()` 의 `if (state.playlistLoading) return` ↔ 같은 함수가 `playIndex(firstPlayable)` 를 `try` 블록 안에서 **동기 호출**하는 구조
+- **이유**: 성능·스타일 조정이 아니라 **데드락 수정**이다. 동기로 부르면 skip·재생실패가 연쇄될 때 사이클 전체가 `loadPlaylist` 의 실행 스택 안에서 끝나버리고, 끝에서 부르는 `loadPlaylist({fromCycle})` 이 **아직 `finally` 가 안 돌아 `playlistLoading === true` 인 바깥 호출**에 막혀 조용히 return 한다. `retryTimer` 도 안 걸려 루프가 무증상 사망한다(하네스 실증: 동기 `prepareCount=1` / 새 스택 `prepareCount=6`). `setTimeout` 이 `finally` 가 플래그를 내린 뒤 실행되게 만들어 이걸 구조적으로 제거한다. **`queueMicrotask`/`Promise.then` 으로 바꾸는 것도 안 된다** — 재진입은 풀리지만 전 항목 실패 시 한 턴 안에서 연쇄 드레인되어 페인트가 굶고, 매크로태스크의 중첩 타이머 클램프(5단계 후 4ms)가 주는 공짜 레이트리밋도 잃는다.
+- **변경 시 검사**: "의미 없어 보이는 `setTimeout`" 이라고 되돌리지 말 것 / `loadPlaylist` 의 재진입 가드나 `playIndex` 동기 호출 구조를 바꾸면 이 결합을 함께 재검토 / 검증은 "전 항목 미준비 상태에서 사이클마다 prepare 가 재호출되는가".
+
+## `index.html` 의 hls.js script ↔ `package.json` dependencies ↔ electron-builder `files`/`asar`
+
+- **연결**: `index.html` `<script src="./node_modules/hls.js/dist/hls.min.js">` ↔ `package.json` `dependencies["hls.js"]` ↔ `package.json` `build.files` 글롭 + `asar: true`
+- **이유**: 셋 중 하나만 어긋나도(의존성 제거·버전 변경, `files` 에서 node_modules 배제, vendor 로 이전) `window.Hls` 가 undefined 가 되고, Chromium 은 네이티브 HLS 를 지원하지 않아 **HLS 콘텐츠가 통째로 재생 불가**가 된다. 게다가 **로컬 `npm start` 로는 절대 안 잡힌다** — dev 모드는 node_modules 를 그대로 읽으므로 항상 성공하고, 실패는 패키징 산출물에서만 드러난다. 2.1.13 이전엔 unpkg CDN 이라 오프라인 부팅에서 같은 증상이 났다(incident-log 2026-09-16).
+- **변경 시 검사**: 위 3곳 중 하나라도 건드리면 **배포 전 `npm run dist:local` → `npx asar list release/win-unpacked/resources/app.asar | grep hls.min.js`** 로 번들 포함을 확인할 것. `files` 에 용량 트림 글롭을 추가할 때도 `hls.min.js` 가 살아남았는지 같은 방법으로 확인.

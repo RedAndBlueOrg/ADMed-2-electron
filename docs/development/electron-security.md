@@ -11,10 +11,11 @@
 현재:
 ```
 default-src 'self'; style-src 'self' 'unsafe-inline'; media-src 'self' file: blob: https: http: data:;
-img-src 'self' file: blob: data: https: http:; script-src 'self' https://unpkg.com;
+img-src 'self' file: blob: data: https: http:; script-src 'self';
 connect-src 'self' http: https: ws: wss: data: blob:; worker-src 'self' blob:; frame-src 'self' https: http: data:;
 ```
-- `script-src` 는 `'self'` + `https://unpkg.com`(hls.js) 만. **외부 origin 추가 / `'unsafe-eval'` / `'unsafe-inline'`(script) 금지** — 추가가 필요하면 보안 검토 + 사용자 승인.
+- `script-src` 는 **`'self'` 만**. **외부 origin 추가 / `'unsafe-eval'` / `'unsafe-inline'`(script) 금지** — 추가가 필요하면 보안 검토 + 사용자 승인.
+  - 2.1.13 이전에는 `https://unpkg.com`(hls.js CDN)이 허용돼 있었다. 오프라인 부팅(auto-launch 가 DHCP/DNS 보다 먼저 뜸)이면 스크립트가 안 와 `window.Hls` 가 undefined 가 되고, Chromium 은 네이티브 HLS 를 지원하지 않아 **HLS 콘텐츠가 통째로 재생 불가**였다. `hls.js` 를 npm 의존성으로 옮겨 로컬에서 로드하면서 이 origin 을 제거했다.
 - `connect-src` / `media-src` 가 `http:`/`https:`/`ws:`/`wss:` 광범위 — 시나리오/공지/클리닉/날씨/캐시 서버 호출 때문. 좁히기는 가능하지만 회귀 위험 (현장마다 엔드포인트 다름).
 - `frame-src` 가 넓은 건 랜딩 페이지(`LANDING_URL`, 기본 `https://www.admed.kr`) iframe 때문.
 

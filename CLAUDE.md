@@ -8,7 +8,7 @@
 
 ## Tech Stack
 - **Runtime**: Electron 39 (main = Node CommonJS `src/main/`, renderer = ES Modules `src/renderer/`, `preload.js` 브리지)
-- **주요 의존성**: `electron-updater`(자동 업데이트), `@stomp/stompjs`+`ws`(클리닉 WS), `extract-zip`/`adm-zip`(HLS ZIP), `auto-launch`, `ini`, `keytar`. 렌더러는 `hls.js`(unpkg CDN).
+- **주요 의존성**: `electron-updater`(자동 업데이트), `@stomp/stompjs`+`ws`(클리닉 WS), `extract-zip`/`adm-zip`(HLS ZIP), `auto-launch`, `ini`, `keytar`. 렌더러는 `hls.js`(npm 의존성, 로컬 번들 — 오프라인 부팅에서도 동작).
 - **빌드**: `electron-builder`(NSIS, win), GitHub Releases 배포 (`.github/workflows/release.yml`, `v*` 태그)
 - **테스트**: 자동 테스트 스위트 없음 — `node --check` 문법 검사 + `npm start` 수동 스모크 + DevTools 콘솔. 시나리오는 [docs/testing-plan.md](docs/testing-plan.md).
 

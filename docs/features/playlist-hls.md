@@ -28,12 +28,13 @@
 - **Range 요청**: `bytes=start-end` 파싱 → 206 Partial. `.ts` 는 `fs.readFile` 후 `buf.subarray(start, end+1)` (전체 읽고 슬라이스), 그 외는 `fs.createReadStream({start,end})` 스트리밍. `416` 처리.
 
 ## 재생 엔진 (renderer: `src/renderer/media.js`)
+- **다음 항목으로의 진행은 항상 `callPlayNext()` 를 거치고, 이 함수는 `setTimeout(..., 0)` 으로 새 스택에서 시작한다.** 동기로 부르면 skip·재생실패가 연쇄될 때 사이클이 `loadPlaylist` 의 스택 안에서 끝나버려, 사이클 끝의 재조회가 자기 자신의 `playlistLoading` 가드에 막히고 `retryTimer` 도 안 걸려 루프가 무증상 사망한다(impact-map 참조). 예외도 삼키지 않고 `log()` 로 남긴다.
 - `playIndex(idx)`: `resetMedia(type)` (타이머/HLS/비디오 정리) → 항목 타입별 분기. `localFile||streamUrl` 없으면 **`state.currentIndex = idx` 로 전진시킨 뒤** `callPlayNext()` — 이 전진을 빠뜨리면 `playNext()` 의 `currentIndex + 1` 이 같은 인덱스를 가리켜 동기 재귀로 스택이 터진다(impact-map 참조).
 - **image**: `imageEl.src` 세팅, `setTimeout(callPlayNext, durationSeconds*1000 || 5000)`.
 - **video**: `videoEl.src = localFile||streamUrl`, `autoplay`, `play()`. `ended` 이벤트 → `state.onPlayNext` (app.js 에 바인딩). `error` 이벤트 → 다음으로.
 - **hls** (`item.type==='hls'`): `window.Hls.isSupported()` 면 `new Hls({...버퍼 설정, fragLoadingMaxRetry:6 등})` → `loadSource(streamUrl)` → `attachMedia(videoEl)`. `MANIFEST_PARSED` → `play()`. 15초 안에 manifest 안 오면 skip. **stall 감지**: 3초마다 `currentTime` 이 0.1초 미만 변화면 stallCount++; ≤2회면 `currentTime += 5` 로 seek + `play()`; 3회째면 skip. `ERROR` 이벤트: non-fatal → pause/play, NETWORK_ERROR → `startLoad()`, MEDIA_ERROR → `recoverMediaError()`, 그 외 fatal → skip. `videoEl.canPlayType('application/vnd.apple.mpegurl')` 면 native HLS, 아니면 skip.
 - 비디오는 loop 아님 — `ended` 시 다음으로 (※ workflow.md 는 "video loop" 라 적혀있으나 코드는 `ended`→`playNext`. 단 한 항목만 있으면 `playNext` 가 사이클 끝→`loadPlaylist`로 다시 처음). HLS 도 ended 시 다음으로.
-- `hls.js` 는 `index.html` 에서 `https://unpkg.com/hls.js@1.6.15/dist/hls.min.js` 로 로드 (CSP `script-src` 에 unpkg 허용).
+- `hls.js` 는 `index.html` 에서 **로컬 번들**(`./node_modules/hls.js/dist/hls.min.js`, npm dependencies)로 로드. 2.1.13 이전에는 unpkg CDN 이었는데, 오프라인 부팅이면 스크립트가 안 와 `window.Hls` 가 undefined → 네이티브 HLS 미지원 → `HLS playback not supported` 분기로 전 항목이 skip 되어 HLS 가 통째로 죽었다. CSP `script-src` 는 `'self'` 로 축소.
 
 ## 환경변수
 `SCENARIO_API_URL` (필수, `?id=<serial>` 붙음), `TEMPLATE_BASE_URL` (필수, `?img=&type=` 쿼리), `LANDING_URL` (기본 `https://www.admed.kr`).

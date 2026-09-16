@@ -26,7 +26,7 @@ tools: [Read, Edit, Write, Grep, Glob, Bash]
 ## 강제 규칙
 - Node API / `require` 직접 사용 X → preload 브리지 경유 (`window.mediaAPI` 등)
 - IPC 채널/브리지 시그니처가 바뀌면 backend(main) 보고에 맞춰 호출처·리스너 갱신 (계약 깨짐 방지)
-- `index.html` 의 CSP `<meta>` 약화 X (현재 `script-src 'self' https://unpkg.com` 로 hls.js 만 허용). 외부 origin 추가는 보안 검토 필요
+- `index.html` 의 CSP `<meta>` 약화 X (현재 `script-src 'self'` — hls.js 는 npm 의존성 로컬 번들). **외부 스크립트 origin 추가 금지** — CDN 로드는 오프라인 부팅 시 `window.Hls` 가 undefined 가 되어 HLS 가 전멸한 전례가 있다(incident-log 2026-09-16). 추가가 필요하면 보안 검토 + 사용자 승인
 - 미디어 재생 실패 시 항상 다음 항목으로 진행 가능해야 함 (`callPlayNext()` 경로 유지) — 한 항목이 전체를 멈추면 안 됨
 - 타이머/리스너/HLS 인스턴스 누수 방지 — `resetMedia()` / `destroyHls()` / `clearXxxTimer()` 패턴 따름 (4시간+ 무인 운영)
 

@@ -74,11 +74,14 @@ export function renderPlaylist() {
   });
 }
 
-function callPlayNext() {
-  if (state.onPlayNext) {
-    // 삼키면 안 된다 — 이 경로에서 터진 예외는 재생 루프를 무증상 정지시킨다 (incident-log 2026-09-16).
+export function callPlayNext() {
+  if (!state.onPlayNext) return;
+  // 항상 새 스택에서 시작한다 — 동기로 부르면 skip·재생실패가 연쇄될 때 사이클 전체가 한 스택에서
+  // 붕괴하고, 끝에서 부르는 loadPlaylist 가 아직 실행 중인 바깥 호출의 playlistLoading 가드에
+  // 막혀 재시도 없이 루프가 죽는다. 예외도 삼키지 않는다 (incident-log 2026-09-16).
+  setTimeout(() => {
     Promise.resolve(state.onPlayNext()).catch((err) => log(`playNext failed: ${err.message}`));
-  }
+  }, 0);
 }
 
 export function playIndex(idx) {
@@ -221,6 +224,7 @@ export function playIndex(idx) {
     } else {
       log('HLS playback not supported.');
       callPlayNext();
+      return;
     }
     log(`HLS streaming start: ${title}`);
     return;

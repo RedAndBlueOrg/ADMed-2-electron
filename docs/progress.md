@@ -154,3 +154,20 @@
   - **P1 — `hls.js` 가 unpkg CDN 로드**(`index.html`). 오프라인 부팅(auto-launch 가 DHCP/DNS 보다 먼저)이면 `window.Hls === undefined` + Chromium 네이티브 HLS 미지원 → `media.js` 의 `HLS playback not supported` 분기가 **동기** `callPlayNext()` → 사이클 전체가 한 스택에서 붕괴 → 끝에서 `loadPlaylist({fromCycle})` 이 `if (state.playlistLoading) return` 에 막혀 **retryTimer 도 안 걸리고 루프 사망**. tester 하네스에서 `prepareCount` 1 고정으로 실증. 이번 P0 와 **동일 계열이고 현장 증상의 더 유력한 후보일 수 있다.** 수정은 hls.js 로컬 번들링(CSP 동반) 또는 재진입 가드.
   - **P2 — `.part` 영구 누적**: `cleanupCache` 가 `.part` 를 무조건 건너뛰어 삭제 주체가 없다. 개발 머신 실측 `2024278-*.zip.part` **687MB**(2026-06-30자) 방치. 현장 단말은 128GB SSD 에 Windows 라 실여유가 넉넉하지 않다. mtime 기준 정리 필요(진행 중 다운로드를 깨지 않도록 여유 있게).
 - 2.1.13 후보: 캐시 폴백(대안 A = 복원 사이클엔 캐시 실재 항목만 재생, 새 다운로드 안 걸기) / cleanup 정책을 호출자 `scenarioOk` 플래그로 이전 + 유예 세대 / 콜드·운영 타임아웃 분리 / `callPlayNext` 마이크로태스크화 / 재생 0건 사이클 레이트 리밋 / 공지·대기열 복원 시효성 처리.
+
+## 2026-09-16 v2.1.13 — hls.js 로컬 번들 + `callPlayNext` 비동기화
+
+- 동기: 2.1.12 검증 중 tester 가 **같은 "무성 정지" 계열의 두 번째 원인**을 찾았다. `hls.js` 를 unpkg CDN 에서 로드하고 있어(`index.html`, CSP `script-src` 에 unpkg 허용) 오프라인 부팅(auto-launch 가 DHCP/DNS 보다 먼저)이면 `window.Hls` 가 undefined → Chromium 네이티브 HLS 미지원 → `HLS playback not supported` 분기가 **동기** `callPlayNext()` → 사이클이 한 스택에서 붕괴 → 끝의 `loadPlaylist({fromCycle})` 이 `playlistLoading` 재진입 가드에 막혀 `retryTimer` 조차 안 걸림. **현장 증상의 유력한 후보.**
+- 변경:
+  - **`index.html`** — unpkg CDN → `./node_modules/hls.js/dist/hls.min.js` 로컬 로드. CSP `script-src 'self' https://unpkg.com` → **`script-src 'self'`**. 부팅마다 서드파티 CDN 에서 코드를 받아 실행하던 공급망 표면이 사라졌다.
+  - **`package.json`** — `hls.js` **`"1.6.15"` 정확 핀**(CDN URL 이 버전을 박고 있어 원래 정확 핀이었는데 `^` 로 느슨해질 뻔했다). `build.files` 에 트림 글롭 3줄(`dist/*.map`, `dist/hls-demo.js`, `src/**`) — 패키지 22MB 중 실사용은 `hls.min.js` 532KB 뿐이고 자동 업데이트가 인스톨러 전체를 200대에 내려보낸다.
+  - **`src/renderer/media.js`** — `callPlayNext()` 를 `setTimeout(..., 0)` 으로 감싸 항상 새 스택에서 시작 + export. **스택 완화가 아니라 재진입 데드락 수정**이다(하네스 실증: `prepareCount` 1 고정 → 정상 순환, 5000개 연쇄 skip 에서도 오버플로 없음). HLS 미지원 분기에 `return` 추가(그 뒤 `HLS streaming start` 오도 로그가 찍히던 것 차단).
+  - **`src/renderer/app.js`** — `ended`/`error` 핸들러가 중복 구현 대신 `media.js` 의 `callPlayNext` 사용. **`.catch(() => {})` 무성 실패 제거** — tester 지적대로 `app.js` 가 **일반 mp4 의 유일한 전환 경로**라 가장 흔한 콘텐츠의 전환 실패가 아직 무성이었다. `videoEl.error` 가 없는 error 이벤트도 로그를 남긴다.
+- 검증: **tester·reviewer·verifier 전부 PASS, P0/P1 0건.**
+  - tester — 개발 모드 CDP 라이브(`Hls` 1.6.15, `scriptSrc` = `file://`, 콘솔 에러 0, 영상 연속 재생) + **실제 asar 에 프로덕션 CSP 로 hls.js 로드 실측**(worker 포함) + 출하된 2.1.8 asar 에서 `!dist/**` 가 `node_modules/*/dist/` 를 안 지움을 실물 확인 + 전환 지연 4.26ms/hop 실측.
+  - reviewer — 자기 이전 판단 정정("`setTimeout` 은 스타일 개선이 아니라 재진입 데드락의 정통 수정"). `setTimeout` 이 `queueMicrotask` 보다 나은 이유도 명시(폭주 시 페인트 굶음 방지 + 중첩 타이머 클램프가 공짜 레이트리밋).
+  - verifier — 4 도메인 통과. CSP 축소는 허용 집합 **축소**라 승인 게이트 대상 아님, 문서↔실제 값 문자 단위 일치, 외부 스크립트 로드 0건, blob 워커는 무변경 `worker-src` 가 커버, IPC·캐시 가드 무변경, **순환 import 없음**(오히려 `state.onPlayNext` 슬롯 접근점이 `media.js` 한 곳으로 단일화).
+  - **asar 게이트 통과** — `npx electron-builder --win --dir` 후 `npx asar list` 로 `dist/hls.min.js` 포함 + `.map`/`hls-demo.js`/`src/` 제외 0건 확인. 이 실패는 로컬 `npm start` 로는 절대 안 잡히고 패키징 산출물에서만 드러나므로 impact-map 에 검사 절차로 등재했다.
+- 팀 공유 문서 갱신(사용자 승인): `CLAUDE.md` 기술 스택 서술, **`.claude/agents/frontend.md` CSP 규칙 텍스트** — 후자는 안 고치면 이후 frontend 에이전트가 unpkg 를 허용 origin 으로 오인해 CDN 로드를 되살릴 수 있다.
+- **Windows 실기 검증 대기** — 특히 ① 오프라인 부팅에서 `typeof window.Hls === 'function'` ② 설치본에서 HLS-ZIP 재생 ③ CSP 위반 0건.
+- 잔존(별도): `.part` 687MB 영구 방치 / 부분 keepPaths 로 인한 HLS 패키지 재다운로드 / skip 연쇄 중 `loadPlaylist` 개입 시 항목 1개 스킵 race(영구 freeze 를 항목 1개 스킵으로 바꾼 것이라 순이득) / `download.js` 무타임아웃.

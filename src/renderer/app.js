@@ -8,6 +8,7 @@ import { initScale } from './layout.js';
 import { setupDownloadProgressListener, renderVersionToast, cleanupDownloadProgress } from './overlays.js';
 import { loadNotices } from './notice.js';
 import { loadPlaylist } from './playlist.js';
+import { callPlayNext } from './media.js';
 import { setupMoveHandle } from './move-handle.js';
 import { startWeatherClock } from './weather.js';
 
@@ -38,14 +39,16 @@ window.addEventListener('beforeunload', () => {
 
 // --- Video events ---
 videoEl.addEventListener('ended', () => {
-  if (state.onPlayNext) Promise.resolve(state.onPlayNext()).catch((err) => log(`playNext failed: ${err.message}`));
+  callPlayNext();
 });
 videoEl.addEventListener('waiting', () => log('Buffering...'));
 videoEl.addEventListener('stalled', () => log('Stream stalled'));
 videoEl.addEventListener('error', () => {
   const err = videoEl.error;
-  if (err) log(`Video error: ${err.message || err.code}, skipping to next`);
-  if (state.onPlayNext) Promise.resolve(state.onPlayNext()).catch((err) => log(`playNext failed: ${err.message}`));
+  // err 가 없어도 로그는 남긴다 — resetMedia 의 removeAttribute+load() 가 빈 src error 를
+  // 유발할 수 있는데, 조용히 넘기면 항목이 왜 스킵됐는지 현장에서 추적할 수 없다.
+  log(err ? `Video error: ${err.message || err.code}, skipping to next` : 'Video error (no error object), skipping to next');
+  callPlayNext();
 });
 
 // --- Input prevention ---
