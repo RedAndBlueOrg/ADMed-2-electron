@@ -72,7 +72,14 @@ async function fetchScenarioPlaylist() {
     .filter(Boolean)
     .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
 
-  return { playlist: mapped, waitingInfo: data.waitingInfo, memberSeq: data.mSeq?.seq ?? null, scenarioRaw: data };
+  return {
+    playlist: mapped,
+    waitingInfo: data.waitingInfo,
+    memberSeq: data.mSeq?.seq ?? null,
+    noticeSpeedPct: data.noticeSpeedPct ?? 100,
+    noticeFontPct: data.noticeFontPct ?? 100,
+    scenarioRaw: data,
+  };
 }
 
 async function getScenario() {
@@ -116,10 +123,15 @@ async function fetchNoticesFast() {
   try {
     const scenario = await getScenario();
     const noticeList = await fetchNoticeList(getScenarioApiUrl(), scenario.memberSeq);
-    return { noticeList, waitingInfo: scenario.waitingInfo };
+    return {
+      noticeList,
+      waitingInfo: scenario.waitingInfo,
+      noticeSpeedPct: scenario.noticeSpeedPct,
+      noticeFontPct: scenario.noticeFontPct,
+    };
   } catch (err) {
     console.warn('notice fetch failed:', err.message);
-    return { noticeList: [], waitingInfo: null, error: err.message };
+    return { noticeList: [], waitingInfo: null, noticeSpeedPct: 100, noticeFontPct: 100, error: err.message };
   }
 }
 

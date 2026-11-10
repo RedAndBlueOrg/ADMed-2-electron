@@ -1,6 +1,6 @@
 {
   "name": "admed",
-  "version": "2.1.13",
+  "version": "2.1.14",
   "description": "ADMed for Windows",
   "main": "main.js",
   "type": "commonjs",
@@ -8,6 +8,7 @@
   "license": "ISC",
   "keywords": [],
   "scripts": {
+    "test": "node --test",
     "start": "electron .",
     "dev": "electron .",
     "rebuild": "electron-rebuild -f -w keytar",
@@ -42,6 +43,7 @@
       "**/*",
       "!dist/**",
       "!release/**",
+      "!test/**",
       "!node_modules/.cache/**",
       "!node_modules/hls.js/dist/*.map",
       "!node_modules/hls.js/dist/hls-demo.js",

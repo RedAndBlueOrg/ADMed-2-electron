@@ -46,7 +46,7 @@ app.whenReady().then(async () => {
       return await fetchNoticesFast();
     } catch (err) {
       console.warn('notice fetch failed (handler):', err.message);
-      return { noticeList: [], waitingInfo: null, error: err.message };
+      return { noticeList: [], waitingInfo: null, noticeSpeedPct: 100, noticeFontPct: 100, error: err.message };
     }
   });
 

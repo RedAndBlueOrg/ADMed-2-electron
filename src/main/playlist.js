@@ -87,6 +87,8 @@ async function preparePlaylist({ allowBackground = false } = {}) {
   let playlist = [];
   let waitingInfo = null;
   let noticeList = [];
+  let noticeSpeedPct = 100;
+  let noticeFontPct = 100;
   let memberSeq = null;
   let downloadTotal = 0;
   let downloadFinished = 0;
@@ -145,10 +147,14 @@ async function preparePlaylist({ allowBackground = false } = {}) {
     playlist = scenario.playlist || [];
     waitingInfo = scenario.waitingInfo || null;
     memberSeq = scenario.memberSeq || null;
+    noticeSpeedPct = scenario.noticeSpeedPct ?? 100;
+    noticeFontPct = scenario.noticeFontPct ?? 100;
     noticeList = await fetchNoticeList(getScenarioApiUrl(), scenario.memberSeq);
   } catch (err) {
     console.warn('Scenario API failed:', err.message);
     playlist = [];
+    noticeSpeedPct = 100;
+    noticeFontPct = 100;
   }
 
   const needsDownload = playlist.filter((item) => {
@@ -356,6 +362,8 @@ async function preparePlaylist({ allowBackground = false } = {}) {
     playlist: prepared,
     waitingInfo,
     noticeList,
+    noticeSpeedPct,
+    noticeFontPct,
     memberSeq,
     deviceSerial: state.configIni.deviceSerial || '',
     clinicApiOrigin,
