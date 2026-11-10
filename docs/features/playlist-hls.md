@@ -10,7 +10,7 @@
    - `type` ∈ jpg/jpeg/png/gif/webp → `image` (`durationSeconds` = `time`)
    - `type` = m3u8 → `hls-zip`
    - `type` ∈ mp4/mov → `video`
-   - URL = `TEMPLATE_BASE_URL?img=<img>&type=<type>`. `waitingInfo` 와 `mSeq.seq`(memberSeq) 도 추출.
+   - URL = `TEMPLATE_BASE_URL?img=<img>&type=<type>`. `waitingInfo` 와 `mSeq.seq`(memberSeq), 최상위 `noticeSpeedPct`·`noticeFontPct`(누락 시 각각 100)도 추출.
    - `fetchNoticeList(apiUrl, memberSeq)` → `<origin>/dapi/clinic/notice/list?memberId=<memberSeq>`
    - 시나리오·공지 `fetch` 는 둘 다 `AbortSignal.timeout(10s)`(2.1.12). 없으면 undici 기본 headersTimeout 300초까지 매달려 렌더러의 self-heal 이 도달하지 못한다. 실패는 예외가 아니라 `playlist: []` 로 렌더러에 전달된다.
 2. `startCacheServer(cacheRoot)` (`cacheRoot` = `app.getPath('userData')/admed-cache`) → `cache-server.js` 가 `127.0.0.1:<random>/cache` 반환
@@ -20,7 +20,11 @@
    - **hls-zip**: `<safeBase>.zip` 다운로드 → 파일 첫 64바이트가 `#EXT...` 면 m3u8 직접(rename), 아니면 `extract-zip` 으로 `<safeBase>/` 에 추출 → `findFirstManifest()` 로 `.m3u8` 찾음 → `streamUrl = <cacheBaseUrl>/<rel manifest path>`. 추출 실패해도 m3u8 가 추출됐으면 부분 성공. 잘린 zip 이면 1회 재다운로드. 캐시된 m3u8 첫 16바이트가 `#EXT` 아니면 (과거 잘못 저장) 삭제 후 재시도. 다운로드+추출 코어는 `doHlsZipDownloadExtract()` 로 분리(콜드/백그라운드 공유).
      - **차단 vs 비차단** (`preparePlaylist({allowBackground})`, `allowBackground` = 렌더러의 `hasEverPlayed`): **콜드 스타트(false)** 는 위 과정을 `await`(차단) → 다 받고 재생, 큰 n/m 오버레이. **운영 중(true)** 미캐시 패키지는 `await` 안 하고 `startHlsZipBackground()` 로 백그라운드 다운로드, 이번 사이클은 `streamUrl` 없이 반환 → 렌더러가 skip(다음 재생 가능 항목으로 — **2.1.12 부터 실제로 동작**한다. 2.1.11 까지는 skip 이 `state.currentIndex` 를 갱신하지 않아 동기 재귀로 재생 루프가 죽었다. incident-log 2026-09-16 참조) → 받아지면 다음 사이클에 합류. 새 템플릿이 맨 앞에 와도 freeze 없이 즉시 다음 항목 재생. 모듈 `hlsZipInProgress` Set 이 같은 패키지 중복 다운로드를 막고 진행 동안 스피너(`active`)를 유지.
 4. `cleanupCache(cacheRoot, keepPaths)` — keepPaths(현재 재생목록 자산) + `.part` 임시 파일 제외하고 삭제. **단 `keepPaths` 가 비어 있으면 아무것도 지우지 않고 early return**(2.1.12) — 빈 keepPaths 는 "지킬 게 없다"가 아니라 "시나리오 조회 실패로 재생목록을 못 받았다"는 뜻이라, 그대로 진행하면 조회 1회 실패로 캐시 전체가 삭제된다. 가드는 "완전히 빈" 응답만 막고 **부분 응답은 여전히 나머지를 삭제**한다(2.1.13 에서 호출자 플래그로 이전 예정). (※ 코드상 "15분 미사용" 로직은 keepPaths 기반 — 매 prepare 마다 안 쓰는 건 즉시 정리)
-5. 반환: `{playlist[], waitingInfo, noticeList[], memberSeq, deviceSerial, clinicApiOrigin, clinicWsOrigin, landingUrl}`. `deviceSerial` 비어있으면 renderer 가 랜딩 오버레이.
+5. `playlist:prepare` 반환: `{playlist[], waitingInfo, noticeList[], noticeSpeedPct, noticeFontPct, memberSeq, deviceSerial, clinicApiOrigin, clinicWsOrigin, landingUrl}`. `deviceSerial` 비어있으면 renderer 가 랜딩 오버레이.
+
+`notice:fetch`도 같은 시나리오 설정을 전달한다: `{noticeList[], waitingInfo, noticeSpeedPct, noticeFontPct}` 또는 실패 시 `{noticeList:[], waitingInfo:null, noticeSpeedPct:100, noticeFontPct:100, error}`. `/dapi/clinic/notice/list`는 기존 배열 응답을 유지한다.
+
+렌더러는 숫자가 아니거나 null/undefined인 배율을 100으로 처리하고 속도는 50~200, 글자는 50~150으로 제한한다. 시나리오 조회 실패 시 두 배율은 100이다. 자막 시간은 `max(8, (barWidth + textWidth) / 140) × 100 / noticeSpeedPct`. 글자 배율은 `--notice-font-scale`로 적용하며 100이면 변수를 제거한다. 글자 크기를 반영한 뒤 너비를 측정하고 시간을 계산한다.
 
 ## 로컬 캐시 HTTP 서버 (`src/main/cache-server.js`)
 - `127.0.0.1` 랜덤 포트, `/cache/` prefix 만, path traversal 체크(`targetPath.startsWith(cacheRoot)`).

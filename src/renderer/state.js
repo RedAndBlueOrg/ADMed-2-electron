@@ -5,6 +5,8 @@ const state = {
   waitingInfo: null,
   noticeList: [],
   noticeIndex: 0,
+  noticeSpeedPct: 100,
+  noticeFontPct: 100,
   overlayLocked: true,
   errorState: false,
   playlistLoading: false,

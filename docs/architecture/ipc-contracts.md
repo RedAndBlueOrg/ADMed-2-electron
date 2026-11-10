@@ -6,13 +6,15 @@
 
 | 채널 | main 등록 | preload 브리지 | renderer 호출 | 인자 → 반환 |
 |------|----------|---------------|--------------|------------|
-| `playlist:prepare` | `main.js` → `preparePlaylist({allowBackground})` (`src/main/playlist.js`) | `mediaAPI.preparePlaylist(allowBackground)` | `playlist.js` `loadPlaylist()` | `(allowBackground:boolean)` → `{playlist[], waitingInfo, noticeList[], memberSeq, deviceSerial, clinicApiOrigin, clinicWsOrigin, landingUrl}` (에러 시 throw). `allowBackground=true`(운영 중, `hasEverPlayed`)면 미캐시 HLS-ZIP 을 await 안 하고 백그라운드로 받아 준비된 항목부터 즉시 재생; `false`(콜드 스타트)면 기존처럼 차단+큰 n/m 오버레이 |
-| `notice:fetch` | `main.js` → `fetchNoticesFast()` (`src/main/scenario-api.js`) | `mediaAPI.fetchNotices()` | `notice.js` `loadNotices()` | () → `{noticeList[], waitingInfo}` 또는 `{noticeList:[], waitingInfo:null, error}` |
+| `playlist:prepare` | `main.js` → `preparePlaylist({allowBackground})` (`src/main/playlist.js`) | `mediaAPI.preparePlaylist(allowBackground)` | `playlist.js` `loadPlaylist()` | `(allowBackground:boolean)` → `{playlist[], waitingInfo, noticeList[], noticeSpeedPct, noticeFontPct, memberSeq, deviceSerial, clinicApiOrigin, clinicWsOrigin, landingUrl}` (에러 시 throw). `allowBackground=true`(운영 중, `hasEverPlayed`)면 미캐시 HLS-ZIP 을 await 안 하고 백그라운드로 받아 준비된 항목부터 즉시 재생; `false`(콜드 스타트)면 기존처럼 차단+큰 n/m 오버레이 |
+| `notice:fetch` | `main.js` → `fetchNoticesFast()` (`src/main/scenario-api.js`) | `mediaAPI.fetchNotices()` | `notice.js` `loadNotices()` | () → `{noticeList[], waitingInfo, noticeSpeedPct, noticeFontPct}` 또는 `{noticeList:[], waitingInfo:null, noticeSpeedPct:100, noticeFontPct:100, error}` |
 | `weather:config` | `main.js` (인라인) | `mediaAPI.getWeatherConfig()` | `weather.js` `useConfigWeather()` | () → `{lat, lon, weatherServiceUrl, weatherServiceKey}` |
 | `app:version` | `main.js` → `app.getVersion()` | `appInfo.getVersion()` | `overlays.js` `renderVersionToast()` | () → `string` |
 | `clinic:ws:start` | `main.js` → `startClinicSocket(cfg)` (`src/main/clinic-ws.js`) | `clinicWS.start(config)` | `clinic.js` `startClinicSocketInternal()` | `{memberSeq, clinicWsOrigin, clinicSeqList[]}` → `true` |
 | `clinic:ws:stop` | `main.js` → `stopClinicSocket()` | `clinicWS.stop()` | `clinic.js` `stopClinicSocketInternal()` | () → `true` |
 | `context:menu` | `main.js` → `buildContextMenu().popup()` (`src/main/context-menu.js`) | `mediaAPI.showContextMenu()` | `app.js` (contextmenu 이벤트) | () → (메뉴 팝업) |
+
+`noticeSpeedPct`·`noticeFontPct`는 시나리오 응답의 최상위 필드이며, 누락되면 각각 100을 반환한다. 렌더러는 숫자가 아니거나 null/undefined이면 100으로 정규화하고 속도는 50~200, 글자는 50~150으로 제한한다. 공지 목록 API 응답은 기존 배열 그대로다.
 
 ## main → renderer (webContents.send / on)
 
