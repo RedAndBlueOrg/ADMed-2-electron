@@ -2,7 +2,7 @@ import state from './state.js';
 import {
   versionToast, downloadOverlay, downloadProgressFill,
   downloadProgressText, downloadProgressBar, errorOverlay, statusOverlay,
-  contentSpinner,
+  contentSpinner, offlineIndicator,
 } from './dom.js';
 
 let versionToastTimer = null;
@@ -33,6 +33,12 @@ export function updateContentSpinner() {
     }
     contentSpinner.classList.remove('visible');
   }
+}
+
+// --- Offline indicator ---
+
+export function setOfflineIndicator(visible) {
+  offlineIndicator?.classList.toggle('visible', Boolean(visible));
 }
 
 // --- Version toast ---

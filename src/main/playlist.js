@@ -7,7 +7,7 @@ const { pathToFileURL } = require('url');
 const state = require('./state');
 const { CACHE_ROOT_NAME, ensureDir } = require('./config');
 const { downloadFileWithHeaders, downloadFile } = require('./download');
-const { getScenario, getScenarioApiUrl, fetchNoticeList } = require('./scenario-api');
+const { getScenario, getScenarioApiUrl, fetchNoticeList, saveScenarioCache, loadScenarioCache } = require('./scenario-api');
 const { startCacheServer, extractZip, findFirstManifest, cleanupCache } = require('./cache-server');
 
 function sendDownloadProgress(payload) {
@@ -88,6 +88,9 @@ async function preparePlaylist({ allowBackground = false } = {}) {
   let waitingInfo = null;
   let noticeList = [];
   let memberSeq = null;
+  // true = 시나리오 API 실패로 저장된 시나리오를 쓰는 중. 캐시에 있는 미디어만 재생하고
+  // 다운로드·캐시 정리는 하지 않는다(서버 복구 후 다음 사이클에 정상 경로로 돌아온다).
+  let offline = false;
   let downloadTotal = 0;
   let downloadFinished = 0;
   let downloadActive = 0;
@@ -145,13 +148,24 @@ async function preparePlaylist({ allowBackground = false } = {}) {
     playlist = scenario.playlist || [];
     waitingInfo = scenario.waitingInfo || null;
     memberSeq = scenario.memberSeq || null;
-    noticeList = await fetchNoticeList(getScenarioApiUrl(), scenario.memberSeq);
+    const fetchedNotices = await fetchNoticeList(getScenarioApiUrl(), scenario.memberSeq);
+    noticeList = fetchedNotices ?? [];
+    saveScenarioCache(scenario, fetchedNotices);
   } catch (err) {
     console.warn('Scenario API failed:', err.message);
     playlist = [];
+    const cached = loadScenarioCache();
+    if (cached) {
+      offline = true;
+      playlist = cached.playlist;
+      waitingInfo = cached.waitingInfo || null;
+      memberSeq = cached.memberSeq || null;
+      noticeList = cached.noticeList;
+      console.warn(`[offline] using saved scenario (${playlist.length} items)`);
+    }
   }
 
-  const needsDownload = playlist.filter((item) => {
+  const needsDownload = offline ? [] : playlist.filter((item) => {
     if (!item?.url) return false;
     const isHlsZip = item.type === 'hls-zip';
     const isHls = item.type === 'hls' || (!isHlsZip && (item.url.endsWith('.m3u8') || false));
@@ -249,6 +263,12 @@ async function preparePlaylist({ allowBackground = false } = {}) {
       const alreadyCached = (fs.existsSync(zipPath) || fs.existsSync(m3u8Direct)) && !!findFirstManifest(destDir);
       const hlsPaths = { safeBase, destDir, zipPath, m3u8Direct };
 
+      if (!alreadyCached && offline) {
+        // 재생 불가 → 렌더러가 skip. 다운로드는 걸지 않는다(download.js 는 무타임아웃이라 단절 중엔 매달린다).
+        prepared.push({ ...item, type: 'hls' });
+        continue;
+      }
+
       // 운영 중(allowBackground) 미캐시 패키지: 차단하지 않고 백그라운드로 받는다.
       // 이번 사이클은 streamUrl 없이 반환 → 렌더러가 skip 하고 준비된 다음 항목을 재생,
       // 패키지는 받아지면 다음 사이클에 합류. (cleanup 이 지우지 않도록 경로는 keep)
@@ -309,6 +329,12 @@ async function preparePlaylist({ allowBackground = false } = {}) {
       continue;
     }
 
+    if (offline) {
+      // 미캐시 + 오프라인 → 재생 불가로 넘겨 skip. 원격 스트림·다운로드는 단절 중 매달리므로 걸지 않는다.
+      prepared.push({ ...item, type: itemType });
+      continue;
+    }
+
     keepPaths.add(destPath);
 
     prepared.push({
@@ -341,7 +367,7 @@ async function preparePlaylist({ allowBackground = false } = {}) {
     });
   }
 
-  cleanupCache(cacheRoot, keepPaths);
+  if (!offline) cleanupCache(cacheRoot, keepPaths);
 
   const clinicApiOrigin = process.env.CLINIC_API_ORIGIN || '';
   const clinicWsOrigin = process.env.CLINIC_WS_ORIGIN || '';
@@ -361,6 +387,7 @@ async function preparePlaylist({ allowBackground = false } = {}) {
     clinicApiOrigin,
     clinicWsOrigin,
     landingUrl,
+    offline,
   };
 }
 

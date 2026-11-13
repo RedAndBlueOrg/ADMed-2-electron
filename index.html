@@ -435,6 +435,30 @@
       #content-spinner.visible {
         display: block;
       }
+      /* 시나리오 서버에 닿지 못해 저장된 시나리오로 재생 중일 때 우상단에 작게 표시 */
+      #offline-indicator {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        width: clamp(26px, calc(34px * var(--ui-scale)), 48px);
+        height: clamp(26px, calc(34px * var(--ui-scale)), 48px);
+        padding: clamp(5px, calc(7px * var(--ui-scale)), 10px);
+        box-sizing: border-box;
+        border-radius: 50%;
+        background: rgba(0, 0, 0, 0.45);
+        color: rgba(255, 255, 255, 0.85);
+        display: none;
+        pointer-events: none;
+        z-index: 1100;
+      }
+      #offline-indicator.visible {
+        display: block;
+      }
+      #offline-indicator svg {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
       @keyframes spin {
         to {
           transform: rotate(360deg);
@@ -627,6 +651,11 @@
         <img id="image" alt="슬라이드" style="display:none;" />
         <div id="status-overlay"><img src="./images/logo_full.png" alt="ADMed 로고" /></div>
         <div id="content-spinner" aria-hidden="true"></div>
+        <div id="offline-indicator" role="status" aria-label="인터넷 연결 끊김 — 저장된 콘텐츠 재생 중">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M2 2l20 20"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><path d="M5 12.86a10 10 0 0 1 5.17-2.69"/><path d="M19 12.86a10 10 0 0 0-2.01-1.48"/><path d="M2 8.82a15 15 0 0 1 4.17-2.65"/><path d="M10.66 5a15 15 0 0 1 11.34 3.82"/><path d="M12 20h.01"/>
+          </svg>
+        </div>
         <div class="move-handle" aria-label="창 이동"></div>
       </div>
       <div id="weather-panel">

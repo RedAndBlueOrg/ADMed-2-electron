@@ -171,3 +171,17 @@
 - 팀 공유 문서 갱신(사용자 승인): `CLAUDE.md` 기술 스택 서술, **`.claude/agents/frontend.md` CSP 규칙 텍스트** — 후자는 안 고치면 이후 frontend 에이전트가 unpkg 를 허용 origin 으로 오인해 CDN 로드를 되살릴 수 있다.
 - **Windows 실기 검증 대기** — 특히 ① 오프라인 부팅에서 `typeof window.Hls === 'function'` ② 설치본에서 HLS-ZIP 재생 ③ CSP 위반 0건.
 - 잔존(별도): `.part` 687MB 영구 방치 / 부분 keepPaths 로 인한 HLS 패키지 재다운로드 / skip 연쇄 중 `loadPlaylist` 개입 시 항목 1개 스킵 race(영구 freeze 를 항목 1개 스킵으로 바꾼 것이라 순이득) / `download.js` 무타임아웃.
+
+## 2026-11-13 v2.1.14 — 시나리오 오프라인 폴백 + 오프라인 아이콘 + 온라인 감시 interval 정지
+
+- 동기: 서버 점검·장애, 기기·기관 회선 단절 시 미디어가 캐시에 있어도 시나리오 조회 실패로 `playlist: []` → 콜드 부팅은 에러 화면, 운영 중은 마지막 프레임 정지. 2.1.13 후보였던 "캐시 폴백" 의 구현.
+- 변경:
+  - **`src/main/scenario-api.js`** — 응답 매핑을 `mapScenarioData()` 로 분리. 성공 응답(원본) + 공지를 `userData/scenario-cache.json` 에 저장(같으면 안 씀, 재생 항목 0개면 안 씀, 공지 조회 실패 시 저장본 공지 유지). `templates`·`mSeq` 둘 다 없는 200 응답은 실패로 판정. `fetchNoticeList` 실패 시 `null`(호출자 `?? []`).
+  - **`src/main/playlist.js`** — 조회 실패 시 저장본으로 `offline = true`: 캐시된 미디어만 재생 가능, 미캐시 항목 다운로드 안 함, `cleanupCache` 생략. 반환에 `offline`.
+  - **renderer** — `#player` 우상단 Wi-Fi 끊김 아이콘(`#offline-indicator`, `response.offline || !navigator.onLine`, `offline` 이벤트에서 즉시). **`stopOnlineCheck()` 를 재생 확정 분기에서 호출** — 2.0.6 리팩터 이후 정지 호출이 0건이라 `offline` 이벤트 1회 뒤 5초마다 재생목록이 처음부터 재시작되던 버그(incident-log 2026-11-13).
+- 검증: macOS 라이브(mock 프록시 + CDP) — 온라인 저장 / 운영 중 연결거부·점검응답·무응답(10s) 폴백 / 복구 시 아이콘 해제 / 시나리오 변경 즉시 파일 반영 후 다운 시 변경본 재생 / 빈 응답 미저장 후 다운 시 저장본 재생 / 공지만 500 시 공지 유지 / 저장 파일 없음 대조군(기존 에러+자동복구) / `offline` 이벤트 후 재생 연속(수정 전 7.3→0.0→2.6→0.2… 재현). tester PASS(합성 섞인 목록·손상 파일 6종·이벤트 복구), reviewer P0 0건(P1 3건 반영).
+- 알려진 한계(후속):
+  - 연결만 물리고 응답 없는 장애(방화벽 DROP)에선 오프라인 동안 사이클마다 10초 직전 프레임+도넛. 즉시 실패(DNS·연결거부·회선 단절)는 해당 없음.
+  - 관리자가 시나리오를 의도적으로 비우면 오프라인 때 이전 콘텐츠가 나온다(빈 응답 미저장의 대가). 내려야 할 콘텐츠가 있으면 정책 결정 필요.
+  - 대기현황 전용 기기(템플릿 0개)는 저장본이 없어 폴백 없음. 오프라인 기동 시 `notice:fetch` 는 폴백이 없어 공지가 늦게 도착하면 비워질 수 있음(다음 사이클 복구).
+  - **Windows 실기 대기**: Wi-Fi 끊김→복구 후 영상 끝까지 재생, 클리닉 레이아웃 기기 오프라인 부팅, 아이콘 위치(세로 화면·`--ui-scale`).
