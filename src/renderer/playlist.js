@@ -4,6 +4,7 @@ import { applyLayout, showLandingOverlay, setLandingUrl } from './layout.js';
 import { showError, hideError, updateContentSpinner, setOfflineIndicator } from './overlays.js';
 import { playIndex, renderPlaylist } from './media.js';
 import { renderNotice, loadNotices } from './notice.js';
+import { normalizePct } from './notice-metrics.js';
 import { updateWeatherPanel } from './weather.js';
 import { setupClinicRealtime, stopClinicSocket, restartClinicRealtime } from './clinic.js';
 
@@ -101,6 +102,8 @@ export async function loadPlaylist({ fromCycle = false, fromRecovery = false } =
       state.playlist = response;
       state.noticeList = [];
       state.noticeIndex = 0;
+      state.noticeSpeedPct = 100;
+      state.noticeFontPct = 100;
     } else {
       state.playlist = response.playlist || [];
       nextMemberSeq = response.memberSeq ?? null;
@@ -116,6 +119,8 @@ export async function loadPlaylist({ fromCycle = false, fromRecovery = false } =
 
       state.noticeList = response.noticeList || [];
       state.noticeIndex = 0;
+      state.noticeSpeedPct = normalizePct(response.noticeSpeedPct, 50, 200);
+      state.noticeFontPct = normalizePct(response.noticeFontPct, 50, 150);
       // main 이 시나리오 API 대신 저장된 시나리오를 썼거나 회선이 끊긴 상태면 표시. 다음 성공 응답에서 꺼진다.
       setOfflineIndicator(response.offline || !navigator.onLine);
     }

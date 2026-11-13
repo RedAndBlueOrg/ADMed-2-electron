@@ -172,7 +172,13 @@
 - **Windows 실기 검증 대기** — 특히 ① 오프라인 부팅에서 `typeof window.Hls === 'function'` ② 설치본에서 HLS-ZIP 재생 ③ CSP 위반 0건.
 - 잔존(별도): `.part` 687MB 영구 방치 / 부분 keepPaths 로 인한 HLS 패키지 재다운로드 / skip 연쇄 중 `loadPlaylist` 개입 시 항목 1개 스킵 race(영구 freeze 를 항목 1개 스킵으로 바꾼 것이라 순이득) / `download.js` 무타임아웃.
 
-## 2026-11-13 v2.1.14 — 시나리오 오프라인 폴백 + 오프라인 아이콘 + 온라인 감시 interval 정지
+## 2026-11-10 v2.1.14 — 공지 자막 속도·글자 크기 % 조절 (PR #1, 배포됨)
+
+- 시나리오 응답 `noticeSpeedPct`(50~200)·`noticeFontPct`(50~150)를 `playlist:prepare`·`notice:fetch` 로 전달해 자막 속도·크기에 적용. `node --test` 자동 테스트 도입(`test/`). 상세는 PR #1.
+
+## 2026-11-13 v2.1.15 — 시나리오 오프라인 폴백 + 오프라인 아이콘 + 온라인 감시 interval 정지
+
+- 2.1.14(PR #1)가 먼저 배포돼 main 을 merge 하고 2.1.15 로 올렸다. 오프라인 폴백 시 공지 배율도 저장본 값(`mapScenarioData` 단일 경로). merge 후 `npm test` 16/16, 라이브 재검증·reviewer·verifier 통과.
 
 - 동기: 서버 점검·장애, 기기·기관 회선 단절 시 미디어가 캐시에 있어도 시나리오 조회 실패로 `playlist: []` → 콜드 부팅은 에러 화면, 운영 중은 마지막 프레임 정지. 2.1.13 후보였던 "캐시 폴백" 의 구현.
 - 변경:

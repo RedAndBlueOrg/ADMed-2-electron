@@ -87,6 +87,8 @@ async function preparePlaylist({ allowBackground = false } = {}) {
   let playlist = [];
   let waitingInfo = null;
   let noticeList = [];
+  let noticeSpeedPct = 100;
+  let noticeFontPct = 100;
   let memberSeq = null;
   // true = 시나리오 API 실패로 저장된 시나리오를 쓰는 중. 캐시에 있는 미디어만 재생하고
   // 다운로드·캐시 정리는 하지 않는다(서버 복구 후 다음 사이클에 정상 경로로 돌아온다).
@@ -148,12 +150,16 @@ async function preparePlaylist({ allowBackground = false } = {}) {
     playlist = scenario.playlist || [];
     waitingInfo = scenario.waitingInfo || null;
     memberSeq = scenario.memberSeq || null;
+    noticeSpeedPct = scenario.noticeSpeedPct ?? 100;
+    noticeFontPct = scenario.noticeFontPct ?? 100;
     const fetchedNotices = await fetchNoticeList(getScenarioApiUrl(), scenario.memberSeq);
     noticeList = fetchedNotices ?? [];
     saveScenarioCache(scenario, fetchedNotices);
   } catch (err) {
     console.warn('Scenario API failed:', err.message);
     playlist = [];
+    noticeSpeedPct = 100;
+    noticeFontPct = 100;
     const cached = loadScenarioCache();
     if (cached) {
       offline = true;
@@ -161,6 +167,8 @@ async function preparePlaylist({ allowBackground = false } = {}) {
       waitingInfo = cached.waitingInfo || null;
       memberSeq = cached.memberSeq || null;
       noticeList = cached.noticeList;
+      noticeSpeedPct = cached.noticeSpeedPct ?? 100;
+      noticeFontPct = cached.noticeFontPct ?? 100;
       console.warn(`[offline] using saved scenario (${playlist.length} items)`);
     }
   }
@@ -382,6 +390,8 @@ async function preparePlaylist({ allowBackground = false } = {}) {
     playlist: prepared,
     waitingInfo,
     noticeList,
+    noticeSpeedPct,
+    noticeFontPct,
     memberSeq,
     deviceSerial: state.configIni.deviceSerial || '',
     clinicApiOrigin,

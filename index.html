@@ -541,7 +541,7 @@
         height: 100%;
       }
       .moving-text-span {
-        font-size: clamp(32px, calc(48px * var(--ui-scale)), 72px);
+        font-size: min(calc(clamp(32px, calc(48px * var(--ui-scale)), 72px) * var(--notice-font-scale, 1)), calc(max(60px, calc(var(--notice-h) * 1vh)) * 0.75));
         font-weight: 700;
         font-family: "SCDream", "Segoe UI", sans-serif;
         letter-spacing: 0.5px;
