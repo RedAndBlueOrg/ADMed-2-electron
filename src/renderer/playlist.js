@@ -1,7 +1,7 @@
 import state from './state.js';
 import { videoEl, statusOverlay, noticeBar, landingMessage, log } from './dom.js';
 import { applyLayout, showLandingOverlay, setLandingUrl } from './layout.js';
-import { showError, hideError, updateContentSpinner } from './overlays.js';
+import { showError, hideError, updateContentSpinner, setOfflineIndicator } from './overlays.js';
 import { playIndex, renderPlaylist } from './media.js';
 import { renderNotice, loadNotices } from './notice.js';
 import { normalizePct } from './notice-metrics.js';
@@ -121,6 +121,8 @@ export async function loadPlaylist({ fromCycle = false, fromRecovery = false } =
       state.noticeIndex = 0;
       state.noticeSpeedPct = normalizePct(response.noticeSpeedPct, 50, 200);
       state.noticeFontPct = normalizePct(response.noticeFontPct, 50, 150);
+      // main 이 시나리오 API 대신 저장된 시나리오를 썼거나 회선이 끊긴 상태면 표시. 다음 성공 응답에서 꺼진다.
+      setOfflineIndicator(response.offline || !navigator.onLine);
     }
 
     if (nextLandingUrl) {
@@ -168,7 +170,9 @@ export async function loadPlaylist({ fromCycle = false, fromRecovery = false } =
 
     const firstPlayable = state.playlist.findIndex((item) => item.localFile || item.streamUrl);
     if (firstPlayable >= 0) {
-      // 새 콘텐츠 준비 완료 → 재생 확정. 도넛 끔.
+      // 새 콘텐츠 준비 완료 → 재생 확정. 도넛 끔. 온라인 감시 interval 도 끈다 — 남겨두면
+      // 회선 복구 후 5초마다 attemptRecovery 가 재생목록을 처음부터 다시 시작한다.
+      stopOnlineCheck();
       state.hasEverPlayed = true;
       state.fetchingContent = false;
       updateContentSpinner();
@@ -242,6 +246,7 @@ window.addEventListener('online', () => {
 });
 
 window.addEventListener('offline', () => {
+  setOfflineIndicator(true);
   startOnlineCheck();
   if (state.clinicEnabled) {
     stopClinicSocket();

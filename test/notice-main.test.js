@@ -71,6 +71,7 @@ test('E1 preparePlaylist forwards settings and resets scenario or notice failure
   const nativeRequire = createRequire(filename);
   let scenario = { playlist: [], noticeSpeedPct: 175, noticeFontPct: 130 };
   let failure = '';
+  let cached = null;
   const mocks = {
     electron: { app: { getPath: () => '/unused' }, BrowserWindow: { getAllWindows: () => [] } },
     './state': { configIni: {} },
@@ -81,6 +82,8 @@ test('E1 preparePlaylist forwards settings and resets scenario or notice failure
       getScenario: async () => { if (failure === 'scenario') throw new Error('offline'); return scenario; },
       getScenarioApiUrl: () => '',
       fetchNoticeList: async () => { if (failure === 'notice') throw new Error('offline'); return []; },
+      saveScenarioCache() {},
+      loadScenarioCache: () => cached,
     },
   };
   const module = { exports: {} };
@@ -93,6 +96,12 @@ test('E1 preparePlaylist forwards settings and resets scenario or notice failure
   failure = '';
   scenario = { playlist: [] };
   assertPcts(await module.exports.preparePlaylist(), 100, 100);
+  // 시나리오 실패 + 저장본 있음 → 오프라인 폴백은 저장본의 배율을 쓴다
+  cached = { playlist: [], waitingInfo: 'A', memberSeq: 7, noticeList: [], noticeSpeedPct: 150, noticeFontPct: 120 };
+  failure = 'scenario';
+  const offline = await module.exports.preparePlaylist();
+  assertPcts(offline, 150, 120);
+  assert.equal(offline.offline, true);
 });
 
 test('E1 notice IPC handler forwards success and supplies failure defaults', async () => {

@@ -21,12 +21,12 @@ test('E4 test configuration keeps renderer ESM and excludes tests from packaging
   assert.match(read('index.html'), /<script type="module" src="\.\/src\/renderer\/app\.js"><\/script>/);
 });
 
-test('E5 application and both lockfile versions are 2.1.14', () => {
+test('E5 application and both lockfile versions are 2.1.15', () => {
   const pkg = JSON.parse(read('package.json'));
   const lock = JSON.parse(read('package-lock.json'));
-  assert.equal(pkg.version, '2.1.14');
-  assert.equal(lock.version, '2.1.14');
-  assert.equal(lock.packages[''].version, '2.1.14');
+  assert.equal(pkg.version, '2.1.15');
+  assert.equal(lock.version, '2.1.15');
+  assert.equal(lock.packages[''].version, '2.1.15');
 });
 
 test('E6 both IPC contracts document settings in both documents', () => {

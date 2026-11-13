@@ -65,3 +65,14 @@
 - **연결**: `index.html` `<script src="./node_modules/hls.js/dist/hls.min.js">` ↔ `package.json` `dependencies["hls.js"]` ↔ `package.json` `build.files` 글롭 + `asar: true`
 - **이유**: 셋 중 하나만 어긋나도(의존성 제거·버전 변경, `files` 에서 node_modules 배제, vendor 로 이전) `window.Hls` 가 undefined 가 되고, Chromium 은 네이티브 HLS 를 지원하지 않아 **HLS 콘텐츠가 통째로 재생 불가**가 된다. 게다가 **로컬 `npm start` 로는 절대 안 잡힌다** — dev 모드는 node_modules 를 그대로 읽으므로 항상 성공하고, 실패는 패키징 산출물에서만 드러난다. 2.1.13 이전엔 unpkg CDN 이라 오프라인 부팅에서 같은 증상이 났다(incident-log 2026-09-16).
 - **변경 시 검사**: 위 3곳 중 하나라도 건드리면 **배포 전 `npm run dist:local` → `npx asar list release/win-unpacked/resources/app.asar | grep hls.min.js`** 로 번들 포함을 확인할 것. `files` 에 용량 트림 글롭을 추가할 때도 `hls.min.js` 가 살아남았는지 같은 방법으로 확인.
+
+## 시나리오 저장 파일 ↔ 매핑 ↔ 캐시 파일명
+- **연결**: `src/main/scenario-api.js` `saveScenarioCache`/`loadScenarioCache` (`userData/scenario-cache.json`, **원본 응답**을 저장) ↔ 같은 파일 `mapScenarioData()` ↔ `src/main/playlist.js` 의 캐시 파일명 규칙(`safeBase` + 확장자)
+- **이유**: 오프라인 폴백은 저장된 원본을 **현재 코드의** `mapScenarioData` 로 다시 매핑한 뒤, 같은 파일명 규칙으로 캐시 존재를 확인해 재생한다. 매핑(id·type 판별)이나 `safeBase` 규칙을 바꾸면 업데이트 직후 첫 오프라인 구간에서 캐시가 있어도 "미캐시"로 판정돼 전부 skip 된다. 저장 포맷(`{deviceSerial, scenario, noticeList}`)을 바꾸면 구버전 파일을 읽는 경로도 같이 봐야 한다.
+- **변경 시 검사**: 매핑·파일명 규칙 변경 시 저장 파일이 있는 상태에서 서버를 막고 기동해 `[offline] using saved scenario (N items)` 와 실제 재생을 확인할 것.
+
+## `onlineCheckTimer` ↔ `loadPlaylist` 재생목록 재시작
+- **연결**: `src/renderer/playlist.js` `startOnlineCheck()`(호출: `offline` 핸들러, `loadPlaylist` catch) ↔ `attemptRecovery()` ↔ `loadPlaylist()` 의 `currentIndex = 0` + `playIndex(firstPlayable)` ↔ `stopOnlineCheck()`(재생 확정 분기)
+- **이유**: 이 interval 은 회선이 살아 있으면 매 5초 `loadPlaylist` 를 부르고, `loadPlaylist` 는 성공할 때마다 재생목록을 처음부터 다시 튼다. 정지 호출이 빠지면 무증상으로 "첫 항목 앞 5초만 반복" 이 된다(2.0.6~2.1.13).
+- **변경 시 검사**: `startOnlineCheck` 호출처를 늘리거나 `loadPlaylist` 성공 분기를 고칠 때 `stopOnlineCheck()` 가 성공 경로에 남아 있는지. CDP 로 `window.dispatchEvent(new Event('offline'))` 후 `currentTime` 이 10초 이상 연속 증가하는지.
+- **사고 이력**: incident-log 2026-11-13
