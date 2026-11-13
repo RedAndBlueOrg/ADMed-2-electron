@@ -191,3 +191,9 @@
   - 관리자가 시나리오를 의도적으로 비우면 오프라인 때 이전 콘텐츠가 나온다(빈 응답 미저장의 대가). 내려야 할 콘텐츠가 있으면 정책 결정 필요.
   - 대기현황 전용 기기(템플릿 0개)는 저장본이 없어 폴백 없음. 오프라인 기동 시 `notice:fetch` 는 폴백이 없어 공지가 늦게 도착하면 비워질 수 있음(다음 사이클 복구).
   - **Windows 실기 대기**: Wi-Fi 끊김→복구 후 영상 끝까지 재생, 클리닉 레이아웃 기기 오프라인 부팅, 아이콘 위치(세로 화면·`--ui-scale`).
+
+## 2026-11-13 (배포 완료) v2.1.15 — Draft 해제 → 현장 Latest
+
+- Windows 테스트 기기에서 Draft 설치본 실기 확인(사용자, 정상) 후 Publish. `releases/latest/download/latest.yml` = `version: 2.1.15` 확인.
+- 배포 전 CI 산출물 `ADMed-2.1.15-Setup.exe` 를 풀어 확인: `app.asar` 에 `hls.min.js`·오프라인 폴백·`stopOnlineCheck()`·`#offline-indicator`·2.1.14 공지 코드 포함, `test/` 제외, `resources/.env` 포함.
+- 현장 반영 시점: `initAutoUpdater()` 는 **앱 시작 시 1회만** `checkForUpdatesAndNotify()` 를 부른다(주기 확인 없음) → 24시간 켜둔 기기는 다음 재시작·재부팅 때 받는다. 받은 직후 `quitAndInstall` 로 즉시 재시작.
