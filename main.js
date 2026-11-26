@@ -6,6 +6,9 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 app.commandLine.appendSwitch('ignore-certificate-errors');
 app.commandLine.appendSwitch('enable-features', 'WinrtGeolocationImplementation');
 
+// 일반기관 빌드면 앱 이름·데이터 폴더를 먼저 바꾼다 (userData 를 읽는 어떤 코드보다 앞)
+require('./src/main/edition').applyAppIdentity(app);
+
 // Load env BEFORE other modules (constants depend on process.env)
 const { loadEnvFiles } = require('./src/main/config');
 loadEnvFiles();

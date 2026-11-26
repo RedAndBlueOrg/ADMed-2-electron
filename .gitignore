@@ -32,3 +32,7 @@ release/
 # OS
 .DS_Store
 Thumbs.db
+
+# 일반기관(ADMed All) 빌드
+.env.all
+dist-all/

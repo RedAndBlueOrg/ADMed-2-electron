@@ -42,3 +42,11 @@ npm run dist              # electron-builder --win nsis --publish always (NSIS +
 ## 주의
 - 네이티브 모듈 `keytar` — Node ABI / Electron 버전 안 맞으면 `postinstall` 또는 `npm run rebuild` 필요. `electron` devDep 버전 올리면 재빌드.
 - `.env` 가 패키지에 포함되므로 배포 빌드는 현장용 실제 엔드포인트가 든 `.env` 로 빌드해야 함 (CI 에선 secrets 또는 빈 `.env` — 현장 설정은 별도).
+
+## 일반기관 빌드 (ADMed All) — `electron-builder.all.js`
+- `npm run dist:all:local`(로컬) / `dist:all`(배포). `-c` 로 주면 `package.json` `build` 는 안 읽힌다 → 설정 파일이 `build` 를 펼쳐 정체성만 덮는다.
+- 바뀌는 것: appId `kr.fine.admed.all.pc`, 이름·바로가기·자동실행 `ADMed All`, artifact `ADMed-All-${version}-Setup.exe`(공백 금지 — GitHub 가 점으로 바꿔 latest.yml 과 어긋남), publish `RedAndBlueOrg/ADMed-all-electron`, `.env.all` → resources `.env`, 출력 `dist-all/`.
+- `extraMetadata`(패키지 package.json): `name: admed-all`(업데이터 캐시 폴더 분리) · `productName` · `admedEdition: all` → `src/main/edition.js` 가 빌드 종류를 정하고 `%APPDATA%/ADMed All` 로 `userData` 를 고정. 의료기관은 `%APPDATA%/admed` 그대로.
+- 런타임 차이: 공지 URL `/dapi/device/notice?id={serial}`(의료기관 `/dapi/clinic/notice/list?memberId=`). 개발 실행은 `ADMED_EDITION=all npm start`.
+- `files` 에 `!.env` 필수: electron-builder 는 extraResources 원본만 asar 에서 빼므로 의료기관 `.env` 가 asar 에 들어가고 `loadEnvFiles` 가 그것을 먼저 읽는다.
+- CI `release-all.yml`: `all-v*` 태그에서만 실행(의료기관 `v*` 와 분리). 필요: `secrets.ENV_FILE_ALL`, `GH_TOKEN` 에 대상 저장소 쓰기 권한, 대상 저장소에 커밋 1개 이상.

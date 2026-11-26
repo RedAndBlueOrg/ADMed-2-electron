@@ -4,9 +4,11 @@ const path = require('path');
 const fs = require('fs');
 const ini = require('ini');
 const state = require('./state');
+const { PRODUCT_NAME } = require('./edition');
 
 const CACHE_ROOT_NAME = 'admed-cache';
-const AUTO_LAUNCH_NAME = 'ADMed';
+// 두 빌드가 같은 이름이면 HKCU Run·StartupApproved 값과 시작 프로그램 바로가기·예약 작업을 서로 덮어쓰고 지운다.
+const AUTO_LAUNCH_NAME = PRODUCT_NAME;
 const TRAY_ICON_CANDIDATES = [
   path.join(__dirname, '..', '..', 'images', 'icon.ico'),
   path.join(process.resourcesPath || path.join(__dirname, '..', '..'), 'images', 'icon.ico'),

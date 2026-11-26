@@ -76,3 +76,8 @@
 - **이유**: 이 interval 은 회선이 살아 있으면 매 5초 `loadPlaylist` 를 부르고, `loadPlaylist` 는 성공할 때마다 재생목록을 처음부터 다시 튼다. 정지 호출이 빠지면 무증상으로 "첫 항목 앞 5초만 반복" 이 된다(2.0.6~2.1.13).
 - **변경 시 검사**: `startOnlineCheck` 호출처를 늘리거나 `loadPlaylist` 성공 분기를 고칠 때 `stopOnlineCheck()` 가 성공 경로에 남아 있는지. CDP 로 `window.dispatchEvent(new Event('offline'))` 후 `currentTime` 이 10초 이상 연속 증가하는지.
 - **사고 이력**: incident-log 2026-11-13
+
+## 빌드 종류(`edition.js`) ↔ 데이터 폴더·자동실행 이름·공지 URL
+- **연결**: `electron-builder.all.js` `extraMetadata.admedEdition` ↔ `src/main/edition.js` `IS_ALL` ↔ `main.js` `applyAppIdentity`(userData) · `config.js` `AUTO_LAUNCH_NAME` · `scenario-api.js` `buildNoticeUrlFromScenario`
+- **이유**: 두 앱을 한 PC 에 두면 데이터 폴더가 같을 때 `cleanupCache` 가 상대 앱 미디어를, 자동실행 이름이 같을 때 상대 앱 Run 값·바로가기를 지운다. 의료기관 시나리오 필드(`waitingInfo`·`mSeq`·배율)를 바꾸면 일반기관 빌드에도 그대로 들어간다.
+- **변경 시 검사**: `npm test`(test/edition.test.js) + `dist:local`/`dist:all:local` 산출물의 `resources/app-update.yml`·`.env`·asar 목록 비교.

@@ -4,6 +4,7 @@ const { app } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const state = require('./state');
+const { IS_ALL } = require('./edition');
 
 // 응답 없이 연결만 물린 경우(방화벽 DROP 등) undici 기본 headersTimeout(300초)까지 매달려
 // 그동안 렌더러의 no-playable 자동 복구가 작동하지 못한다 → 10초로 끊고 상위 catch 에 맡긴다.
@@ -146,11 +147,18 @@ function loadScenarioCache() {
   }
 }
 
+// 의료기관: /dapi/clinic/notice/list?memberId={mSeq.seq} · 일반기관: /dapi/device/notice?id={serial}
 function buildNoticeUrlFromScenario(apiUrl, memberId) {
-  if (!apiUrl || !memberId) return null;
+  if (!apiUrl) return null;
   try {
     const u = new URL(apiUrl);
-    return `${u.protocol}//${u.hostname}${u.port ? `:${u.port}` : ''}/dapi/clinic/notice/list?memberId=${memberId}`;
+    const origin = `${u.protocol}//${u.hostname}${u.port ? `:${u.port}` : ''}`;
+    if (IS_ALL) {
+      const serial = state.configIni.deviceSerial || '';
+      return serial ? `${origin}/dapi/device/notice?id=${encodeURIComponent(serial)}` : null;
+    }
+    if (!memberId) return null;
+    return `${origin}/dapi/clinic/notice/list?memberId=${memberId}`;
   } catch (_err) {
     return null;
   }
@@ -158,7 +166,6 @@ function buildNoticeUrlFromScenario(apiUrl, memberId) {
 
 // 실패 시 null (진짜 0건인 [] 와 구분 — 저장본의 공지를 지우지 않기 위해). 호출자는 `?? []`.
 async function fetchNoticeList(baseUrl, memberId) {
-  if (!baseUrl || !memberId) return [];
   const url = buildNoticeUrlFromScenario(baseUrl, memberId);
   if (!url) return [];
   try {

@@ -1,0 +1,43 @@
+name: Release (ADMed All)
+
+# 일반기관(ADMed All) 빌드. 의료기관 release.yml(v* 태그)과 태그를 나눠 서로의 빌드를 돌리지 않는다.
+# 실행: all-v<버전> 태그 push (예: all-v2.1.15). 산출물은 RedAndBlueOrg/ADMed-all-electron 릴리스 v<버전> 으로 올라간다.
+# 준비물: secrets.ENV_FILE_ALL(.env.all 내용), secrets.GH_TOKEN 에 ADMed-all-electron 쓰기 권한.
+on:
+  push:
+    tags:
+      - "all-v*"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # release.yml 과 같은 이유 — keytar node-gyp fallback 이 Python 3.12 에서 깨짐.
+      - name: Setup Python (node-gyp용)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Create .env.all from secret
+        env:
+          ENV_FILE_ALL: ${{ secrets.ENV_FILE_ALL }}
+        shell: bash
+        run: printf '%s' "$ENV_FILE_ALL" > .env.all
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build and publish (GitHub Releases)
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          NODE_OPTIONS: --max_old_space_size=4096
+        run: npm run dist:all -- --publish always
