@@ -154,3 +154,17 @@ test('데이터 폴더가 나뉘어 한 앱의 캐시 정리가 상대 앱 미�
   assert.deepEqual(fs.readdirSync(allRoot), ['shared.mp4']);
   assert.deepEqual(fs.readdirSync(medicalRoot).sort(), ['hls-pkg', 'only-here.jpg', 'shared.mp4']);
 });
+
+test('개발 실행: 의료기관은 .env, 일반기관은 .env.all 을 읽는다', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'admed-env-'));
+  const cwd = process.cwd();
+  t.after(() => { process.chdir(cwd); fs.rmSync(dir, { recursive: true, force: true }); delete process.env.ADMED_ENV_PROBE; });
+  fs.writeFileSync(path.join(dir, '.env'), 'ADMED_ENV_PROBE=medical\n');
+  fs.writeFileSync(path.join(dir, '.env.all'), 'ADMED_ENV_PROBE=all\n');
+  process.chdir(dir);
+  for (const [opts, expected] of [[{}, 'medical'], [{ env: 'all' }, 'all']]) {
+    delete process.env.ADMED_ENV_PROBE;
+    load(opts).config.loadEnvFiles();
+    assert.equal(process.env.ADMED_ENV_PROBE, expected);
+  }
+});

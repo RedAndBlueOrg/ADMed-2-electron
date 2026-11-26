@@ -3,6 +3,7 @@
 const { app, BrowserWindow, Menu, session } = require('electron');
 const path = require('path');
 const state = require('./state');
+const { PRODUCT_NAME } = require('./edition');
 const { loadWindowState, setScaledBounds, captureWindowState, saveWindowState, scheduleSaveWindowState } = require('./window-state');
 
 function setupGeolocationPermission() {
@@ -40,6 +41,7 @@ function createWindow() {
     titleBarStyle: 'hidden',
     autoHideMenuBar: true,
     backgroundColor: '#000000',
+    title: PRODUCT_NAME,
     icon: path.join(appRoot, 'images', 'icon.ico'),
     show: true,
     fullscreen: state.isFullscreen,
@@ -55,6 +57,8 @@ function createWindow() {
 
   state.mainWindow = win;
   Menu.setApplicationMenu(null);
+  // index.html 의 <title>ADMed</title> 가 창 제목을 덮지 않게 한다 (두 앱을 작업 관리자 등에서 구분)
+  win.on('page-title-updated', (event) => event.preventDefault());
   win.loadFile(path.join(appRoot, 'index.html'));
 
   win.on('system-context-menu', (event) => {

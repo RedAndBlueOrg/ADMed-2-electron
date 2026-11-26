@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const ini = require('ini');
 const state = require('./state');
-const { PRODUCT_NAME } = require('./edition');
+const { PRODUCT_NAME, IS_ALL } = require('./edition');
 
 const CACHE_ROOT_NAME = 'admed-cache';
 // 두 빌드가 같은 이름이면 HKCU Run·StartupApproved 값과 시작 프로그램 바로가기·예약 작업을 서로 덮어쓰고 지운다.
@@ -36,10 +36,13 @@ function ensureDir(dirPath) {
 
 function loadEnvFiles() {
   const appDir = path.join(__dirname, '..', '..');
+  // 일반기관 개발 실행(ADMED_EDITION=all npm start)은 .env.all 을 읽는다.
+  // 설치본은 빌드가 .env.all 을 resources/.env 로 넣으므로 .env 그대로.
+  const envFile = IS_ALL && !require('electron').app?.isPackaged ? '.env.all' : '.env';
   const candidates = [
-    path.join(appDir, '.env'),
-    path.join(process.cwd(), '.env'),
-    process.resourcesPath ? path.join(process.resourcesPath, '.env') : null,
+    path.join(appDir, envFile),
+    path.join(process.cwd(), envFile),
+    process.resourcesPath ? path.join(process.resourcesPath, envFile) : null,
   ].filter(Boolean);
 
   for (const envPath of candidates) {

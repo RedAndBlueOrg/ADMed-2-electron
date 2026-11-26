@@ -4,6 +4,7 @@ const { app, Menu, Tray, nativeImage } = require('electron');
 const fs = require('fs');
 const state = require('./state');
 const { TRAY_ICON_CANDIDATES } = require('./config');
+const { PRODUCT_NAME } = require('./edition');
 
 function pickTrayIcon() {
   for (const candidate of TRAY_ICON_CANDIDATES) {
@@ -28,7 +29,7 @@ function createTray(win) {
         },
       },
     ]);
-    state.tray.setToolTip('ADMed');
+    state.tray.setToolTip(PRODUCT_NAME);
     state.tray.setContextMenu(contextMenu);
     state.tray.on('double-click', () => {
       win.show();
